@@ -209,7 +209,6 @@ p {
   font-size: 12px;
 }
 .home-skip:hover,
-.home-secondary:hover,
 .flow-secondary:hover {
   text-decoration: underline;
 }
