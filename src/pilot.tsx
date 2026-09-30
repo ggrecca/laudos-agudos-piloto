@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Truck,
   UsersRound,
+  X,
 } from "lucide-react";
 
 const url = import.meta.env.VITE_SUPABASE_URL as string;
@@ -579,6 +580,15 @@ export function App() {
   const suggestions = (field: keyof Loading) => [
     ...new Set(loadings.map((l) => String(l[field] || "")).filter(Boolean)),
   ];
+  const analysisSuggestions = [
+    ...new Set(
+      products.flatMap((product) =>
+        product.specifications
+          .map((specification) => specification.name.trim())
+          .filter(Boolean),
+      ),
+    ),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   return (
     <div className="shell">
@@ -711,6 +721,7 @@ export function App() {
                     <input
                       list="plates"
                       disabled={!newLoading && !editLoading}
+                      placeholder="Digite a placa"
                       value={loadingForm.plate}
                       onChange={(e) =>
                         setLoadingForm((f) => ({
@@ -736,6 +747,7 @@ export function App() {
                     <input
                       list="carriers"
                       disabled={!newLoading && !editLoading}
+                      placeholder="Digite para buscar ou cadastrar"
                       value={loadingForm.carrier}
                       onChange={(e) =>
                         setLoadingForm((f) => ({
@@ -747,7 +759,9 @@ export function App() {
                   </Field>
                   <Field label="Destino">
                     <input
+                      list="destinations"
                       disabled={!newLoading && !editLoading}
+                      placeholder="Unidade ou cliente"
                       value={loadingForm.destination}
                       onChange={(e) =>
                         setLoadingForm((f) => ({
@@ -761,6 +775,7 @@ export function App() {
                     <input
                       list="analysts"
                       disabled={!newLoading && !editLoading}
+                      placeholder="Digite o nome"
                       value={loadingForm.analyst}
                       onChange={(e) =>
                         setLoadingForm((f) => ({
@@ -800,6 +815,11 @@ export function App() {
                 </datalist>
                 <datalist id="carriers">
                   {suggestions("carrier").map((v) => (
+                    <option key={v} value={v} />
+                  ))}
+                </datalist>
+                <datalist id="destinations">
+                  {suggestions("destination").map((v) => (
                     <option key={v} value={v} />
                   ))}
                 </datalist>
@@ -1657,11 +1677,17 @@ export function App() {
                   </Field>
                 </div>
                 <h3>Análises</h3>
+                <p className="helper analysis-helper">
+                  Comece a digitar para reutilizar uma análise já cadastrada ou
+                  informe um nome novo.
+                </p>
                 {productForm.specifications.map((s, i) => (
                   <div className="spec-row" key={i}>
                     <input
+                      list="analysis-names"
                       aria-label="Nome da análise"
-                      placeholder="Análise"
+                      autoComplete="off"
+                      placeholder="Nome da análise"
                       value={s.name}
                       onChange={(e) =>
                         setProductForm((f) => ({
@@ -1748,8 +1774,29 @@ export function App() {
                       />{" "}
                       Obrigatória
                     </label>
+                    <button
+                      type="button"
+                      className="remove-analysis"
+                      aria-label={`Remover análise ${i + 1}`}
+                      disabled={productForm.specifications.length === 1}
+                      onClick={() =>
+                        setProductForm((f) => ({
+                          ...f,
+                          specifications: f.specifications.filter(
+                            (_, j) => j !== i,
+                          ),
+                        }))
+                      }
+                    >
+                      <X size={15} />
+                    </button>
                   </div>
                 ))}
+                <datalist id="analysis-names">
+                  {analysisSuggestions.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
                 <div className="actions">
                   <button
                     onClick={() =>
@@ -1881,6 +1928,7 @@ function LoadingTable({
             <th>Destino</th>
             <th>Data</th>
             <th>Situação</th>
+            <th aria-label="Ações"></th>
           </tr>
         </thead>
         <tbody>
@@ -1890,7 +1938,10 @@ function LoadingTable({
               onClick={() => open(l)}
               tabIndex={0}
               onKeyDown={(e) => {
-                if (e.key === "Enter") open(l);
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  open(l);
+                }
               }}
             >
               <td>
@@ -1905,6 +1956,19 @@ function LoadingTable({
               <td>{date(l.loaded_at)}</td>
               <td>
                 <Pill state={l.state} />
+              </td>
+              <td>
+                <button
+                  type="button"
+                  className="table-action"
+                  aria-label={`Abrir carregamento ${l.id}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    open(l);
+                  }}
+                >
+                  Abrir
+                </button>
               </td>
             </tr>
           ))}
