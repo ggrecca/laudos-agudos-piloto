@@ -1,0 +1,1918 @@
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { createClient, type Session } from "@supabase/supabase-js";
+import {
+  Droplets,
+  FileCheck2,
+  FlaskConical,
+  LogOut,
+  Plus,
+  ShieldCheck,
+  Truck,
+  UsersRound,
+} from "lucide-react";
+
+const url = import.meta.env.VITE_SUPABASE_URL as string;
+const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+const db = createClient(url || "https://missing.supabase.co", key || "missing");
+type Role =
+  | "Operador A"
+  | "Operador Técnico"
+  | "Supervisor"
+  | "Administrador"
+  | "Consulta";
+type ProfileStatus = "Pendente" | "Ativo" | "Rejeitado" | "Bloqueado";
+type Profile = {
+  id: string;
+  name: string;
+  role: Role;
+  active: boolean;
+  status: ProfileStatus;
+  destination: string | null;
+};
+type PendingProfile = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  status: "Pendente";
+  destination: string | null;
+  created_at: string;
+};
+type Spec = {
+  name: string;
+  unit: string;
+  min?: number;
+  max?: number;
+  required: boolean;
+  qual?: string[];
+};
+type Product = {
+  id: number;
+  code: string;
+  name: string;
+  family: string;
+  specifications: Spec[];
+  version: number;
+  active: boolean;
+};
+type Tank = { id: number; code: string; family: string; active: boolean };
+type Cycle = {
+  id: number;
+  tank_id: number;
+  product_id: number;
+  specifications: Spec[];
+  specification_version: number;
+  manufactured_at: string;
+  lots: string;
+  reference_values: string[];
+  analyst: string;
+  active: boolean;
+};
+type Loading = {
+  id: number;
+  cycle_id: number;
+  plate: string;
+  trailer: string;
+  carrier: string;
+  destination: string;
+  analyst: string;
+  loaded_at: string;
+  values: string[];
+  source: "own" | "ref";
+  observation: string;
+  state: string;
+  edit_version: number;
+  certificate_number: string | null;
+  issued_at: string | null;
+};
+type Approval = {
+  loading_id: number;
+  edit_version: number;
+  kind: "reuse" | "exception";
+  decision: string;
+  reason: string;
+  decided_at: string;
+};
+type View =
+  | "Carregamentos"
+  | "Autorizações"
+  | "Laudos"
+  | "Ciclos e tanques"
+  | "Cadastros"
+  | "Usuários";
+const views: { name: View; icon: typeof Truck }[] = [
+  { name: "Carregamentos", icon: Truck },
+  { name: "Autorizações", icon: ShieldCheck },
+  { name: "Laudos", icon: FileCheck2 },
+  { name: "Ciclos e tanques", icon: Droplets },
+  { name: "Cadastros", icon: FlaskConical },
+  { name: "Usuários", icon: UsersRound },
+];
+const localTime = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+};
+const localDateTimeToIso = (value: string) => new Date(value).toISOString();
+const date = (value?: string | null) =>
+  value ? new Date(value).toLocaleString("pt-BR") : "—";
+const emptyLoading = (): Omit<
+  Loading,
+  "id" | "state" | "edit_version" | "certificate_number" | "issued_at"
+> => ({
+  cycle_id: 0,
+  plate: "",
+  trailer: "Única",
+  carrier: "",
+  destination: "",
+  analyst: "",
+  loaded_at: localTime(),
+  values: [],
+  source: "own",
+  observation: "",
+});
+const emptySpec = (): Spec => ({ name: "", unit: "", required: true });
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+function Pill({ state }: { state: string }) {
+  return (
+    <span
+      className={
+        "pill " +
+        (state === "Emitido"
+          ? "green"
+          : state === "Aguardando autorização"
+            ? "amber"
+            : state === "Em correção"
+              ? "red"
+              : "")
+      }
+    >
+      {state}
+    </span>
+  );
+}
+function ErrorNotice({ text }: { text: string }) {
+  return text ? (
+    <div className="notice" role="alert">
+      {text}
+    </div>
+  ) : null;
+}
+
+export function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [tanks, setTanks] = useState<Tank[]>([]);
+  const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [loadings, setLoadings] = useState<Loading[]>([]);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [pendingUsers, setPendingUsers] = useState<PendingProfile[]>([]);
+  const [view, setView] = useState<View>("Carregamentos");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [selected, setSelected] = useState<number | null>(null);
+  const [newLoading, setNewLoading] = useState(false);
+  const [newCycle, setNewCycle] = useState(false);
+  const [query, setQuery] = useState("");
+  const [loadingForm, setLoadingForm] = useState(emptyLoading());
+  const [cycleForm, setCycleForm] = useState({
+    tank_id: 0,
+    product_id: 0,
+    manufactured_at: localTime(),
+    lots: "",
+    analyst: "",
+    reference_values: [] as string[],
+  });
+  const [productForm, setProductForm] = useState({
+    code: "",
+    name: "",
+    family: "Resina",
+    specifications: [emptySpec()],
+  });
+  const [tankForm, setTankForm] = useState({ code: "", family: "Resina" });
+  const [decision, setDecision] = useState<{
+    id: number;
+    kind: "reuse" | "exception";
+    approve: boolean;
+  } | null>(null);
+  const [reason, setReason] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [userDecision, setUserDecision] = useState<{
+    user: PendingProfile;
+    approve: boolean;
+  } | null>(null);
+  const [userRole, setUserRole] =
+    useState<Exclude<Role, "Administrador">>("Consulta");
+  const [userDestination, setUserDestination] = useState("");
+  const [userReason, setUserReason] = useState("");
+
+  useEffect(() => {
+    db.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = db.auth.onAuthStateChange((_event, next) =>
+      setSession(next),
+    );
+    return () => listener.subscription.unsubscribe();
+  }, []);
+  async function refresh() {
+    const profileResult = await db.from("pilot_profiles").select("*").single();
+    if (profileResult.error) throw profileResult.error;
+    const nextProfile = profileResult.data as Profile;
+    setProfile(nextProfile);
+    const active = nextProfile.active && nextProfile.status === "Ativo";
+    if (!active) {
+      setProducts([]);
+      setTanks([]);
+      setCycles([]);
+      setLoadings([]);
+      setApprovals([]);
+      setPendingUsers([]);
+      return;
+    }
+    const canManage =
+      nextProfile.role === "Supervisor" || nextProfile.role === "Administrador";
+    const [
+      productsResult,
+      tanksResult,
+      cyclesResult,
+      loadingsResult,
+      approvalsResult,
+      pendingResult,
+    ] = await Promise.all([
+      db.from("pilot_products").select("*").order("name"),
+      db.from("pilot_tanks").select("*").order("code"),
+      db.from("pilot_cycles").select("*").order("id", { ascending: false }),
+      db.from("pilot_loadings").select("*").order("id", { ascending: false }),
+      db.from("pilot_approvals").select("*"),
+      canManage
+        ? db.rpc("pilot_list_pending_profiles")
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    for (const result of [
+      productsResult,
+      tanksResult,
+      cyclesResult,
+      loadingsResult,
+      approvalsResult,
+      pendingResult,
+    ])
+      if (result.error) throw result.error;
+    setProducts((productsResult.data || []) as Product[]);
+    setTanks((tanksResult.data || []) as Tank[]);
+    setCycles((cyclesResult.data || []) as Cycle[]);
+    setLoadings((loadingsResult.data || []) as Loading[]);
+    setApprovals((approvalsResult.data || []) as Approval[]);
+    setPendingUsers((pendingResult.data || []) as PendingProfile[]);
+  }
+  useEffect(() => {
+    if (session) refresh().catch((e) => setNotice(e.message));
+    else setProfile(null);
+  }, [session?.user.id]);
+  async function run(
+    task: () => PromiseLike<{ error: { message: string } | null }>,
+    message: string,
+    after?: () => void,
+  ) {
+    setBusy(true);
+    setNotice("");
+    try {
+      const result = await task();
+      if (result.error) throw result.error;
+      await refresh();
+      after?.();
+      setNotice(message);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function login(event: FormEvent<HTMLFormElement>, create = false) {
+    event.preventDefault();
+    setBusy(true);
+    setNotice("");
+    try {
+      if (create) {
+        if (fullName.trim().length < 3)
+          throw new Error("Informe seu nome completo.");
+        if (password !== passwordConfirmation)
+          throw new Error("As senhas não coincidem.");
+      }
+      const result = create
+        ? await db.auth.signUp({
+            email: email.trim(),
+            password,
+            options: { data: { full_name: fullName.trim() } },
+          })
+        : await db.auth.signInWithPassword({ email: email.trim(), password });
+      if (result.error) throw result.error;
+      if (create) {
+        setAuthMode("login");
+        setPassword("");
+        setPasswordConfirmation("");
+        setNotice(
+          result.data.session
+            ? "Cadastro recebido. Seu acesso ficará aguardando aprovação."
+            : "Cadastro recebido. Confirme o e-mail enviado; depois um Supervisor ou Administrador deverá aprovar seu acesso.",
+        );
+      }
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const internal = !!profile && profile.active && profile.role !== "Consulta";
+  const canManageUsers =
+    profile?.role === "Supervisor" || profile?.role === "Administrador";
+  const canApproveReuse =
+    profile?.role === "Operador Técnico" ||
+    profile?.role === "Supervisor" ||
+    profile?.role === "Administrador";
+  const canApproveException =
+    profile?.role === "Supervisor" || profile?.role === "Administrador";
+  const activeCycles = cycles.filter((c) => c.active);
+  const cycleFor = (l: Loading) => cycles.find((c) => c.id === l.cycle_id);
+  const productFor = (c?: Cycle) =>
+    products.find((p) => p.id === c?.product_id);
+  const tankFor = (c?: Cycle) => tanks.find((t) => t.id === c?.tank_id);
+  const current = loadings.find((l) => l.id === selected);
+  const currentCycle = current && cycleFor(current);
+  const needs = (l: Loading) => {
+    const c = cycleFor(l);
+    const exception =
+      c?.specifications.some((s, i) => {
+        const v = l.values?.[i]?.trim();
+        if (!v) return !!s.required;
+        if (s.qual) return !s.qual.includes(v);
+        const n = Number(v.replace(",", "."));
+        return (
+          Number.isFinite(n) &&
+          ((s.min !== undefined && n < s.min) ||
+            (s.max !== undefined && n > s.max))
+        );
+      }) ?? false;
+    const granted = (kind: "reuse" | "exception") =>
+      approvals.some(
+        (a) =>
+          a.loading_id === l.id &&
+          a.edit_version === l.edit_version &&
+          a.kind === kind &&
+          a.decision === "approved",
+      );
+    return {
+      exception: exception && !granted("exception"),
+      reuse: l.source === "ref" && !granted("reuse"),
+    };
+  };
+  const pending = loadings.filter(
+    (l) =>
+      l.state === "Aguardando autorização" &&
+      (needs(l).reuse || needs(l).exception),
+  );
+  const filtered = loadings.filter((l) => {
+    const term = query.toLowerCase();
+    return (
+      !term ||
+      [
+        l.plate,
+        l.carrier,
+        l.destination,
+        l.certificate_number || "",
+        String(l.id),
+      ].some((v) => v.toLowerCase().includes(term))
+    );
+  });
+  const currentValues = (
+    c: Cycle,
+    values: string[],
+    setter: (v: string[]) => void,
+  ) => (
+    <div className="analysis-list">
+      {c.specifications.map((s, i) => (
+        <Field
+          key={i}
+          label={`${s.name} ${s.unit ? `(${s.unit})` : ""}${s.required ? " *" : ""}`}
+        >
+          <input
+            value={values[i] ?? ""}
+            onChange={(e) => {
+              const next = [...values];
+              next[i] = e.target.value;
+              setter(next);
+            }}
+            placeholder={
+              s.qual?.join(" / ") ||
+              [
+                s.min !== undefined ? `mín ${s.min}` : "",
+                s.max !== undefined ? `máx ${s.max}` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ") ||
+              "Resultado"
+            }
+          />
+        </Field>
+      ))}
+    </div>
+  );
+
+  if (!url || !key)
+    return (
+      <div className="center">
+        <h1>Ambiente não configurado</h1>
+        <p>Faltam as variáveis públicas de conexão com o Supabase.</p>
+      </div>
+    );
+  if (!session)
+    return (
+      <main className="login-layout">
+        <section className="login-card">
+          <div className="brand-symbol">D</div>
+          <small className="eyebrow">DEXCO · AGUDOS</small>
+          <h1>
+            {authMode === "login" ? "Laudos de qualidade" : "Solicitar acesso"}
+          </h1>
+          <p>
+            {authMode === "login"
+              ? "Entre para registrar carregamentos, autorizar exceções e consultar certificados."
+              : "Informe seus dados. O acesso será liberado somente após análise de um Supervisor ou Administrador."}
+          </p>
+          <form onSubmit={(e) => login(e, authMode === "signup")}>
+            {authMode === "signup" && (
+              <Field label="Nome completo">
+                <input
+                  required
+                  autoComplete="name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                />
+              </Field>
+            )}
+            <Field label="E-mail">
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </Field>
+            <Field label="Senha">
+              <input
+                type="password"
+                required
+                minLength={6}
+                autoComplete={
+                  authMode === "login" ? "current-password" : "new-password"
+                }
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
+            {authMode === "signup" && (
+              <Field label="Confirme a senha">
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                  value={passwordConfirmation}
+                  onChange={(e) => setPasswordConfirmation(e.target.value)}
+                />
+              </Field>
+            )}
+            <button disabled={busy} className="primary">
+              {authMode === "login" ? "Entrar" : "Enviar solicitação"}
+            </button>
+          </form>
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              setAuthMode(authMode === "login" ? "signup" : "login");
+              setNotice("");
+            }}
+          >
+            {authMode === "login"
+              ? "Ainda não tenho acesso"
+              : "Já tenho uma conta"}
+          </button>
+          <ErrorNotice text={notice} />
+          <small>
+            {authMode === "login"
+              ? "Perfis e permissões são definidos pelo responsável pelo piloto."
+              : "Após confirmar o e-mail, seu cadastro ficará pendente até a aprovação."}
+          </small>
+        </section>
+      </main>
+    );
+  if (!profile || !profile.active || profile.status !== "Ativo")
+    return (
+      <div className="center">
+        <h1>
+          {profile?.status === "Rejeitado"
+            ? "Acesso não aprovado"
+            : "Aguardando aprovação"}
+        </h1>
+        <p>
+          {profile?.status === "Rejeitado"
+            ? "Sua solicitação não foi aprovada. Entre em contato com o responsável pelo piloto."
+            : "Seu e-mail foi confirmado. Um Supervisor ou Administrador ainda precisa definir seu perfil de acesso."}
+        </p>
+        <button onClick={() => db.auth.signOut()}>Sair</button>
+        <ErrorNotice text={notice} />
+      </div>
+    );
+
+  function openLoading(c?: Cycle) {
+    const chosen = c || activeCycles[0];
+    setLoadingForm({
+      ...emptyLoading(),
+      cycle_id: chosen?.id || 0,
+      values: chosen?.specifications.map(() => "") || [],
+      analyst: profile?.name || "",
+    });
+    setNewLoading(true);
+    setSelected(null);
+    setView("Carregamentos");
+    setNotice("");
+  }
+  function openExisting(l: Loading) {
+    setLoadingForm({
+      cycle_id: l.cycle_id,
+      plate: l.plate,
+      trailer: l.trailer,
+      carrier: l.carrier,
+      destination: l.destination,
+      analyst: l.analyst,
+      loaded_at: localTimeFrom(l.loaded_at),
+      values: [...l.values],
+      source: l.source,
+      observation: l.observation,
+    });
+    setSelected(l.id);
+    setNewLoading(false);
+    setNotice("");
+  }
+  const editLoading =
+    current && ["Rascunho", "Em correção"].includes(current.state) && internal;
+  const showLoading = newLoading || !!current;
+  const selectedFormCycle = cycles.find((c) => c.id === loadingForm.cycle_id);
+  const selectedCycleProduct = products.find(
+    (p) => p.id === cycleForm.product_id,
+  );
+  const suggestions = (field: keyof Loading) => [
+    ...new Set(loadings.map((l) => String(l[field] || "")).filter(Boolean)),
+  ];
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-symbol">D</div>
+          <div>
+            <strong>Laudos Agudos</strong>
+            <small>Piloto</small>
+          </div>
+        </div>
+        <nav>
+          {views
+            .filter(
+              (v) =>
+                (v.name !== "Cadastros" || profile.role === "Administrador") &&
+                (v.name !== "Usuários" || canManageUsers),
+            )
+            .map((v) => {
+              const Icon = v.icon;
+              return (
+                <button
+                  key={v.name}
+                  className={view === v.name ? "active" : ""}
+                  onClick={() => {
+                    setView(v.name);
+                    setSelected(null);
+                    setNewLoading(false);
+                    setNewCycle(false);
+                    setNotice("");
+                  }}
+                >
+                  <Icon size={18} />
+                  {v.name}
+                  {v.name === "Autorizações" && pending.length > 0 && (
+                    <b>{pending.length}</b>
+                  )}
+                  {v.name === "Usuários" && pendingUsers.length > 0 && (
+                    <b>{pendingUsers.length}</b>
+                  )}
+                </button>
+              );
+            })}
+        </nav>
+        <div className="account">
+          <strong>{profile.name || session.user.email}</strong>
+          <small>{profile.role}</small>
+          <button onClick={() => db.auth.signOut()}>
+            <LogOut size={16} /> Sair
+          </button>
+        </div>
+      </aside>
+      <main className="main">
+        <header className="topline">
+          <span>
+            DEXCO <span className="slash">/</span> AGUDOS{" "}
+            <span className="slash">/</span> PILOTO
+          </span>
+          <span>{new Date().toLocaleDateString("pt-BR")}</span>
+        </header>
+        <ErrorNotice text={notice} />
+        {showLoading && view === "Carregamentos" ? (
+          <>
+            <div className="heading">
+              <div>
+                <button
+                  className="back"
+                  onClick={() => {
+                    setSelected(null);
+                    setNewLoading(false);
+                  }}
+                >
+                  ← Carregamentos
+                </button>
+                <h1>
+                  {newLoading
+                    ? "Novo carregamento"
+                    : `Carregamento ${String(current!.id).padStart(4, "0")}`}
+                </h1>
+                <p>
+                  {newLoading
+                    ? "Informe os dados do caminhão e os resultados da análise."
+                    : `Ciclo ${current!.cycle_id} · ${productFor(currentCycle)?.name || ""}`}
+                </p>
+              </div>
+              {current && <Pill state={current.state} />}
+            </div>
+            <div className="two-col">
+              <section className="card">
+                <h2>Identificação e análise</h2>
+                <div className="form-grid">
+                  <Field label="Ciclo">
+                    <select
+                      disabled={!newLoading}
+                      value={loadingForm.cycle_id}
+                      onChange={(e) => {
+                        const c = cycles.find(
+                          (x) => x.id === Number(e.target.value),
+                        );
+                        setLoadingForm((f) => ({
+                          ...f,
+                          cycle_id: c?.id || 0,
+                          values: c?.specifications.map(() => "") || [],
+                        }));
+                      }}
+                    >
+                      <option value={0}>Selecione</option>
+                      {(newLoading ? activeCycles : cycles).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {tankFor(c)?.code} · {productFor(c)?.name} · ciclo{" "}
+                          {c.id}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Data e hora">
+                    <input
+                      type="datetime-local"
+                      disabled={!newLoading && !editLoading}
+                      value={loadingForm.loaded_at}
+                      onChange={(e) =>
+                        setLoadingForm((f) => ({
+                          ...f,
+                          loaded_at: e.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Placa">
+                    <input
+                      list="plates"
+                      disabled={!newLoading && !editLoading}
+                      value={loadingForm.plate}
+                      onChange={(e) =>
+                        setLoadingForm((f) => ({
+                          ...f,
+                          plate: e.target.value.toUpperCase(),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Carreta">
+                    <input
+                      disabled={!newLoading && !editLoading}
+                      value={loadingForm.trailer}
+                      onChange={(e) =>
+                        setLoadingForm((f) => ({
+                          ...f,
+                          trailer: e.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Transportadora">
+                    <input
+                      list="carriers"
+                      disabled={!newLoading && !editLoading}
+                      value={loadingForm.carrier}
+                      onChange={(e) =>
+                        setLoadingForm((f) => ({
+                          ...f,
+                          carrier: e.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Destino">
+                    <input
+                      disabled={!newLoading && !editLoading}
+                      value={loadingForm.destination}
+                      onChange={(e) =>
+                        setLoadingForm((f) => ({
+                          ...f,
+                          destination: e.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Responsável pela análise">
+                    <input
+                      list="analysts"
+                      disabled={!newLoading && !editLoading}
+                      value={loadingForm.analyst}
+                      onChange={(e) =>
+                        setLoadingForm((f) => ({
+                          ...f,
+                          analyst: e.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Origem dos resultados">
+                    <select
+                      disabled={!newLoading && !editLoading}
+                      value={loadingForm.source}
+                      onChange={(e) => {
+                        const source = e.target.value as "own" | "ref";
+                        setLoadingForm((f) => ({
+                          ...f,
+                          source,
+                          values:
+                            source === "ref"
+                              ? [...(selectedFormCycle?.reference_values || [])]
+                              : f.values,
+                        }));
+                      }}
+                    >
+                      <option value="own">Análise do caminhão</option>
+                      <option value="ref">
+                        Referência do tanque (requer autorização)
+                      </option>
+                    </select>
+                  </Field>
+                </div>
+                <datalist id="plates">
+                  {suggestions("plate").map((v) => (
+                    <option key={v} value={v} />
+                  ))}
+                </datalist>
+                <datalist id="carriers">
+                  {suggestions("carrier").map((v) => (
+                    <option key={v} value={v} />
+                  ))}
+                </datalist>
+                <datalist id="analysts">
+                  {[
+                    ...new Set([
+                      ...suggestions("analyst"),
+                      ...cycles.map((c) => c.analyst),
+                    ]),
+                  ].map((v) => (
+                    <option key={v} value={v} />
+                  ))}
+                </datalist>
+                {selectedFormCycle && (
+                  <>
+                    <h3>Resultados</h3>
+                    {currentValues(selectedFormCycle, loadingForm.values, (v) =>
+                      setLoadingForm((f) => ({ ...f, values: v })),
+                    )}
+                  </>
+                )}
+                <Field label="Observações">
+                  <textarea
+                    disabled={!newLoading && !editLoading}
+                    value={loadingForm.observation}
+                    onChange={(e) =>
+                      setLoadingForm((f) => ({
+                        ...f,
+                        observation: e.target.value,
+                      }))
+                    }
+                  />
+                </Field>
+              </section>
+              <aside className="action-column">
+                <section className="card">
+                  <h2>Próxima ação</h2>
+                  {current && (
+                    <p className="muted">
+                      {current.certificate_number
+                        ? `Laudo ${current.certificate_number}`
+                        : current.state}
+                    </p>
+                  )}
+                  {(newLoading || editLoading) && (
+                    <button
+                      className="primary"
+                      disabled={busy || !selectedFormCycle}
+                      onClick={() => {
+                        const payload = {
+                          p_cycle_id: loadingForm.cycle_id,
+                          p_plate: loadingForm.plate,
+                          p_trailer: loadingForm.trailer,
+                          p_carrier: loadingForm.carrier,
+                          p_destination: loadingForm.destination,
+                          p_analyst: loadingForm.analyst,
+                          p_loaded_at: localDateTimeToIso(
+                            loadingForm.loaded_at,
+                          ),
+                          p_values: loadingForm.values,
+                          p_source: loadingForm.source,
+                          p_observation: loadingForm.observation,
+                        };
+                        run(
+                          () =>
+                            db.rpc(
+                              newLoading
+                                ? "pilot_create_loading"
+                                : "pilot_save_loading",
+                              newLoading
+                                ? payload
+                                : {
+                                    ...payload,
+                                    p_id: current!.id,
+                                    p_cycle_id: undefined,
+                                  },
+                            ),
+                          "Rascunho salvo.",
+                          () => {
+                            setNewLoading(false);
+                            setSelected(null);
+                          },
+                        );
+                      }}
+                    >
+                      Salvar rascunho
+                    </button>
+                  )}
+                  {current &&
+                    editLoading &&
+                    (needs(current).exception || needs(current).reuse) && (
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          run(
+                            () =>
+                              db.rpc("pilot_request_approval", {
+                                p_id: current.id,
+                              }),
+                            "Solicitação enviada. O responsável já pode avaliar.",
+                          )
+                        }
+                      >
+                        Solicitar autorização
+                      </button>
+                    )}
+                  {current &&
+                    internal &&
+                    (current.state === "Rascunho" ||
+                      current.state === "Aguardando autorização") && (
+                      <button
+                        className="primary"
+                        disabled={
+                          busy ||
+                          needs(current).exception ||
+                          needs(current).reuse
+                        }
+                        onClick={() =>
+                          run(
+                            () => db.rpc("pilot_issue", { p_id: current.id }),
+                            "Laudo emitido.",
+                          )
+                        }
+                      >
+                        Emitir laudo
+                      </button>
+                    )}
+                  {current && current.state === "Aguardando autorização" && (
+                    <p className="muted">
+                      {needs(current).exception
+                        ? "Aguardando supervisor. "
+                        : ""}
+                      {needs(current).reuse
+                        ? "Aguardando autorização da referência."
+                        : ""}
+                    </p>
+                  )}
+                  {current?.certificate_number && (
+                    <button onClick={() => window.print()}>
+                      Imprimir laudo
+                    </button>
+                  )}
+                  <p className="helper">
+                    Após salvar uma alteração, autorizações anteriores deixam de
+                    valer para esta versão.
+                  </p>
+                </section>
+              </aside>
+            </div>
+            {current?.certificate_number && (
+              <section className="card certificate">
+                <div className="cert-head">
+                  <strong>DEXCO · Agudos</strong>
+                  <span>Certificado de qualidade</span>
+                </div>
+                <h2>Laudo {current.certificate_number}</h2>
+                <div className="cert-grid">
+                  <span>
+                    Produto <strong>{productFor(currentCycle)?.name}</strong>
+                  </span>
+                  <span>
+                    Tanque <strong>{tankFor(currentCycle)?.code}</strong>
+                  </span>
+                  <span>
+                    Placa <strong>{current.plate}</strong>
+                  </span>
+                  <span>
+                    Destino <strong>{current.destination}</strong>
+                  </span>
+                  <span>
+                    Transportadora <strong>{current.carrier}</strong>
+                  </span>
+                  <span>
+                    Emissão <strong>{date(current.issued_at)}</strong>
+                  </span>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Análise</th>
+                      <th>Resultado</th>
+                      <th>Especificação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentCycle?.specifications.map((s, i) => (
+                      <tr key={i}>
+                        <td>
+                          {s.name} {s.unit}
+                        </td>
+                        <td>{current.values[i]}</td>
+                        <td>
+                          {s.qual?.join(" / ") ||
+                            [
+                              s.min !== undefined ? `≥ ${s.min}` : "",
+                              s.max !== undefined ? `≤ ${s.max}` : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") ||
+                            "Informativo"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            )}
+          </>
+        ) : view === "Carregamentos" ? (
+          <>
+            <div className="heading">
+              <div>
+                <h1>Carregamentos</h1>
+                <p>Registre análises e acompanhe cada laudo até a emissão.</p>
+              </div>
+              {internal && (
+                <button
+                  className="primary"
+                  disabled={!activeCycles.length}
+                  onClick={() => openLoading()}
+                >
+                  <Plus size={18} /> Novo carregamento
+                </button>
+              )}
+            </div>
+            <div className="metrics">
+              <div>
+                <strong>
+                  {loadings.filter((l) => l.state !== "Emitido").length}
+                </strong>
+                <span>Em andamento</span>
+              </div>
+              <div>
+                <strong>{pending.length}</strong>
+                <span>Aguardando decisão</span>
+              </div>
+              <div>
+                <strong>
+                  {loadings.filter((l) => l.state === "Emitido").length}
+                </strong>
+                <span>Laudos emitidos</span>
+              </div>
+            </div>
+            {internal && !activeCycles.length && (
+              <p className="empty">
+                Cadastre um produto, um tanque e um ciclo para iniciar.
+              </p>
+            )}
+            <section className="card">
+              <div className="section-head">
+                <h2>Lista de carregamentos</h2>
+                <input
+                  aria-label="Buscar carregamentos"
+                  placeholder="Buscar placa, transportadora, destino…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+              <LoadingTable
+                rows={filtered}
+                cycleFor={cycleFor}
+                productFor={productFor}
+                open={openExisting}
+              />
+            </section>
+          </>
+        ) : view === "Autorizações" ? (
+          <>
+            <div className="heading">
+              <div>
+                <h1>Autorizações</h1>
+                <p>Solicitações que exigem decisão antes da emissão.</p>
+              </div>
+            </div>
+            <section className="card">
+              <LoadingTable
+                rows={pending}
+                cycleFor={cycleFor}
+                productFor={productFor}
+                open={(l) => {
+                  setView("Carregamentos");
+                  openExisting(l);
+                }}
+              />
+              {pending.length === 0 && (
+                <p className="empty">Nenhuma solicitação pendente.</p>
+              )}
+            </section>
+            {pending.map((l) => (
+              <section className="card approval-card" key={l.id}>
+                <div>
+                  <strong>
+                    Carregamento {l.id} · {l.plate}
+                  </strong>
+                  <p>
+                    {productFor(cycleFor(l))?.name} · {l.carrier}
+                  </p>
+                </div>
+                <div className="actions">
+                  {needs(l).reuse &&
+                    (canApproveReuse ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setDecision({
+                              id: l.id,
+                              kind: "reuse",
+                              approve: true,
+                            });
+                            setReason("");
+                          }}
+                        >
+                          Autorizar referência
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDecision({
+                              id: l.id,
+                              kind: "reuse",
+                              approve: false,
+                            });
+                            setReason("");
+                          }}
+                        >
+                          Devolver
+                        </button>
+                      </>
+                    ) : (
+                      <span>Referência: operador técnico ou superior</span>
+                    ))}
+                  {needs(l).exception &&
+                    (canApproveException ? (
+                      <>
+                        <button
+                          className="primary"
+                          onClick={() => {
+                            setDecision({
+                              id: l.id,
+                              kind: "exception",
+                              approve: true,
+                            });
+                            setReason("");
+                          }}
+                        >
+                          Autorizar exceção
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDecision({
+                              id: l.id,
+                              kind: "exception",
+                              approve: false,
+                            });
+                            setReason("");
+                          }}
+                        >
+                          Rejeitar
+                        </button>
+                      </>
+                    ) : (
+                      <span>Exceção: supervisor ou administrador</span>
+                    ))}
+                </div>
+              </section>
+            ))}
+            {decision && (
+              <div className="modal-backdrop">
+                <section className="modal">
+                  <h2>
+                    {decision.approve
+                      ? "Confirmar autorização"
+                      : "Devolver para correção"}
+                  </h2>
+                  <p>
+                    Carregamento {decision.id} ·{" "}
+                    {decision.kind === "exception"
+                      ? "resultado fora da especificação"
+                      : "referência do tanque"}
+                  </p>
+                  <Field label="Justificativa obrigatória">
+                    <textarea
+                      autoFocus
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                    />
+                  </Field>
+                  <div className="actions">
+                    <button onClick={() => setDecision(null)}>Cancelar</button>
+                    <button
+                      className="primary"
+                      disabled={busy || !reason.trim()}
+                      onClick={() =>
+                        run(
+                          () =>
+                            db.rpc("pilot_decide", {
+                              p_id: decision.id,
+                              p_kind: decision.kind,
+                              p_approve: decision.approve,
+                              p_reason: reason,
+                            }),
+                          "Decisão registrada.",
+                          () => setDecision(null),
+                        )
+                      }
+                    >
+                      Registrar decisão
+                    </button>
+                  </div>
+                </section>
+              </div>
+            )}
+          </>
+        ) : view === "Usuários" ? (
+          <>
+            <div className="heading">
+              <div>
+                <h1>Usuários pendentes</h1>
+                <p>
+                  Analise as solicitações e atribua somente o perfil compatível
+                  com sua função.
+                </p>
+              </div>
+            </div>
+            <section className="card">
+              <div className="section-head">
+                <h2>Solicitações de acesso</h2>
+                <span className="muted">
+                  {pendingUsers.length} pendente{pendingUsers.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              {pendingUsers.length === 0 ? (
+                <p className="empty">Nenhuma solicitação pendente.</p>
+              ) : (
+                <div className="user-list">
+                  {pendingUsers.map((user) => (
+                    <div className="user-row" key={user.id}>
+                      <div>
+                        <strong>{user.name || "Nome não informado"}</strong>
+                        <small>
+                          {user.email} · solicitado em {date(user.created_at)}
+                        </small>
+                      </div>
+                      <div className="actions">
+                        <button
+                          onClick={() => {
+                            setUserDecision({ user, approve: true });
+                            setUserRole("Consulta");
+                            setUserDestination(user.destination || "");
+                            setUserReason("");
+                          }}
+                        >
+                          Avaliar
+                        </button>
+                        <button
+                          onClick={() => {
+                            setUserDecision({ user, approve: false });
+                            setUserRole("Consulta");
+                            setUserDestination("");
+                            setUserReason("");
+                          }}
+                        >
+                          Rejeitar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            {userDecision && (
+              <div className="modal-backdrop">
+                <section className="modal">
+                  <h2>
+                    {userDecision.approve
+                      ? "Aprovar acesso"
+                      : "Rejeitar solicitação"}
+                  </h2>
+                  <p>
+                    {userDecision.user.name || "Usuário"} · {userDecision.user.email}
+                  </p>
+                  {userDecision.approve ? (
+                    <>
+                      <Field label="Perfil">
+                        <select
+                          value={userRole}
+                          onChange={(e) =>
+                            setUserRole(
+                              e.target.value as Exclude<Role, "Administrador">,
+                            )
+                          }
+                        >
+                          <option value="Consulta">Consulta</option>
+                          <option value="Operador A">Operador A</option>
+                          <option value="Operador Técnico">Operador Técnico</option>
+                          {profile.role === "Administrador" && (
+                            <option value="Supervisor">Supervisor</option>
+                          )}
+                        </select>
+                      </Field>
+                      {userRole === "Consulta" && (
+                        <Field label="Destino / unidade">
+                          <input
+                            required
+                            value={userDestination}
+                            onChange={(e) => setUserDestination(e.target.value)}
+                            placeholder="Ex.: Unidade Duratex"
+                          />
+                        </Field>
+                      )}
+                      <Field label="Observação (opcional)">
+                        <textarea
+                          value={userReason}
+                          onChange={(e) => setUserReason(e.target.value)}
+                          placeholder="Justificativa ou observação da decisão"
+                        />
+                      </Field>
+                    </>
+                  ) : (
+                    <Field label="Motivo da rejeição">
+                      <textarea
+                        autoFocus
+                        required
+                        minLength={3}
+                        value={userReason}
+                        onChange={(e) => setUserReason(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                  <div className="actions">
+                    <button onClick={() => setUserDecision(null)}>Cancelar</button>
+                    <button
+                      className="primary"
+                      disabled={
+                        busy ||
+                        (userDecision.approve
+                          ? userRole === "Consulta" && !userDestination.trim()
+                          : userReason.trim().length < 3)
+                      }
+                      onClick={() =>
+                        run(
+                          () =>
+                            db.rpc("pilot_decide_profile", {
+                              p_user_id: userDecision.user.id,
+                              p_approve: userDecision.approve,
+                              p_role: userDecision.approve ? userRole : null,
+                              p_destination: userDecision.approve
+                                ? userDestination
+                                : null,
+                              p_reason: userReason,
+                            }),
+                          userDecision.approve
+                            ? "Usuário aprovado."
+                            : "Solicitação rejeitada.",
+                          () => setUserDecision(null),
+                        )
+                      }
+                    >
+                      {userDecision.approve
+                        ? "Aprovar acesso"
+                        : "Rejeitar solicitação"}
+                    </button>
+                  </div>
+                </section>
+              </div>
+            )}
+          </>
+        ) : view === "Laudos" ? (
+          <>
+            <div className="heading">
+              <div>
+                <h1>Laudos emitidos</h1>
+                <p>
+                  Consulte os certificados de qualidade por placa, destino ou
+                  número.
+                </p>
+              </div>
+            </div>
+            <section className="card">
+              <div className="section-head">
+                <h2>Certificados</h2>
+                <input
+                  aria-label="Buscar laudos"
+                  placeholder="Buscar laudo, placa ou destino…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+              <LoadingTable
+                rows={filtered.filter((l) => l.state === "Emitido")}
+                cycleFor={cycleFor}
+                productFor={productFor}
+                open={(l) => {
+                  setView("Carregamentos");
+                  openExisting(l);
+                }}
+              />
+            </section>
+          </>
+        ) : view === "Ciclos e tanques" ? (
+          <>
+            <div className="heading">
+              <div>
+                <h1>Ciclos e tanques</h1>
+                <p>Acompanhe os ciclos ativos e a referência de cada tanque.</p>
+              </div>
+              {internal && (
+                <button
+                  className="primary"
+                  onClick={() => {
+                    setNewCycle(true);
+                    setCycleForm({
+                      tank_id: 0,
+                      product_id: 0,
+                      manufactured_at: localTime(),
+                      lots: "",
+                      analyst: profile.name || "",
+                      reference_values: [],
+                    });
+                  }}
+                >
+                  <Plus size={18} /> Novo ciclo
+                </button>
+              )}
+            </div>
+            {newCycle && (
+              <section className="card">
+                <h2>Novo ciclo</h2>
+                <div className="form-grid">
+                  <Field label="Tanque">
+                    <select
+                      value={cycleForm.tank_id}
+                      onChange={(e) =>
+                        setCycleForm((f) => ({
+                          ...f,
+                          tank_id: Number(e.target.value),
+                          product_id: 0,
+                          reference_values: [],
+                        }))
+                      }
+                    >
+                      <option value={0}>Selecione</option>
+                      {tanks
+                        .filter(
+                          (t) =>
+                            t.active &&
+                            !activeCycles.some((c) => c.tank_id === t.id),
+                        )
+                        .map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.code} · {t.family}
+                          </option>
+                        ))}
+                    </select>
+                  </Field>
+                  <Field label="Produto">
+                    <select
+                      value={cycleForm.product_id}
+                      onChange={(e) => {
+                        const p = products.find(
+                          (x) => x.id === Number(e.target.value),
+                        );
+                        setCycleForm((f) => ({
+                          ...f,
+                          product_id: p?.id || 0,
+                          reference_values:
+                            p?.specifications.map(() => "") || [],
+                        }));
+                      }}
+                    >
+                      <option value={0}>Selecione</option>
+                      {products
+                        .filter(
+                          (p) =>
+                            p.active &&
+                            p.family ===
+                              tanks.find((t) => t.id === cycleForm.tank_id)
+                                ?.family,
+                        )
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} · v{p.version}
+                          </option>
+                        ))}
+                    </select>
+                  </Field>
+                  <Field label="Fabricação · data e hora">
+                    <input
+                      type="datetime-local"
+                      value={cycleForm.manufactured_at}
+                      onChange={(e) =>
+                        setCycleForm((f) => ({
+                          ...f,
+                          manufactured_at: e.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Lotes">
+                    <input
+                      value={cycleForm.lots}
+                      onChange={(e) =>
+                        setCycleForm((f) => ({ ...f, lots: e.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Responsável pela análise">
+                    <input
+                      list="cycle-analysts"
+                      value={cycleForm.analyst}
+                      onChange={(e) =>
+                        setCycleForm((f) => ({ ...f, analyst: e.target.value }))
+                      }
+                    />
+                    <datalist id="cycle-analysts">
+                      {[...new Set(cycles.map((c) => c.analyst))].map((v) => (
+                        <option key={v} value={v} />
+                      ))}
+                    </datalist>
+                  </Field>
+                </div>
+                {selectedCycleProduct && (
+                  <>
+                    <h3>Referência do tanque</h3>
+                    {selectedCycleProduct.specifications.map((s, i) => (
+                      <Field key={i} label={`${s.name} ${s.unit}`}>
+                        <input
+                          value={cycleForm.reference_values[i] || ""}
+                          onChange={(e) =>
+                            setCycleForm((f) => ({
+                              ...f,
+                              reference_values: f.reference_values.map(
+                                (v, j) => (j === i ? e.target.value : v),
+                              ),
+                            }))
+                          }
+                        />
+                      </Field>
+                    ))}
+                  </>
+                )}
+                <div className="actions">
+                  <button onClick={() => setNewCycle(false)}>Cancelar</button>
+                  <button
+                    className="primary"
+                    disabled={busy || !selectedCycleProduct}
+                    onClick={() =>
+                      run(
+                        () =>
+                          db.rpc("pilot_create_cycle", {
+                            p_tank_id: cycleForm.tank_id,
+                            p_product_id: cycleForm.product_id,
+                            p_manufactured_at: localDateTimeToIso(
+                              cycleForm.manufactured_at,
+                            ),
+                            p_lots: cycleForm.lots,
+                            p_reference: cycleForm.reference_values,
+                            p_analyst: cycleForm.analyst,
+                          }),
+                        "Ciclo criado.",
+                        () => setNewCycle(false),
+                      )
+                    }
+                  >
+                    Criar ciclo
+                  </button>
+                </div>
+              </section>
+            )}
+            <div className="card-grid">
+              {cycles.map((c) => (
+                <section className="card" key={c.id}>
+                  <div className="section-head">
+                    <h2>
+                      {tankFor(c)?.code} <small>· ciclo {c.id}</small>
+                    </h2>
+                    <Pill state={c.active ? "Ativo" : "Encerrado"} />
+                  </div>
+                  <strong>{productFor(c)?.name}</strong>
+                  <p className="muted">
+                    Lotes {c.lots} · fabricação {date(c.manufactured_at)}
+                  </p>
+                  <p className="muted">
+                    Especificação v{c.specification_version} · {c.analyst}
+                  </p>
+                  <div className="actions">
+                    {internal && c.active && (
+                      <button onClick={() => openLoading(c)}>
+                        Novo carregamento
+                      </button>
+                    )}
+                    {canApproveReuse && c.active && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Encerrar o ciclo ${c.id}?`))
+                            run(
+                              () => db.rpc("pilot_close_cycle", { p_id: c.id }),
+                              "Ciclo encerrado.",
+                            );
+                        }}
+                      >
+                        Encerrar ciclo
+                      </button>
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+            {!cycles.length && (
+              <p className="empty">Nenhum ciclo cadastrado.</p>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="heading">
+              <div>
+                <h1>Cadastros</h1>
+                <p>
+                  Configure produtos e tanques antes de registrar ciclos reais.
+                </p>
+              </div>
+            </div>
+            <div className="two-col">
+              <section className="card">
+                <h2>Produto e especificação</h2>
+                <div className="form-grid">
+                  <Field label="Código">
+                    <input
+                      value={productForm.code}
+                      onChange={(e) =>
+                        setProductForm((f) => ({ ...f, code: e.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Produto">
+                    <input
+                      value={productForm.name}
+                      onChange={(e) =>
+                        setProductForm((f) => ({ ...f, name: e.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Família">
+                    <select
+                      value={productForm.family}
+                      onChange={(e) =>
+                        setProductForm((f) => ({
+                          ...f,
+                          family: e.target.value,
+                        }))
+                      }
+                    >
+                      <option>Resina</option>
+                      <option>Emulsão</option>
+                    </select>
+                  </Field>
+                </div>
+                <h3>Análises</h3>
+                {productForm.specifications.map((s, i) => (
+                  <div className="spec-row" key={i}>
+                    <input
+                      aria-label="Nome da análise"
+                      placeholder="Análise"
+                      value={s.name}
+                      onChange={(e) =>
+                        setProductForm((f) => ({
+                          ...f,
+                          specifications: f.specifications.map((x, j) =>
+                            j === i ? { ...x, name: e.target.value } : x,
+                          ),
+                        }))
+                      }
+                    />
+                    <input
+                      aria-label="Unidade"
+                      placeholder="Unidade"
+                      value={s.unit}
+                      onChange={(e) =>
+                        setProductForm((f) => ({
+                          ...f,
+                          specifications: f.specifications.map((x, j) =>
+                            j === i ? { ...x, unit: e.target.value } : x,
+                          ),
+                        }))
+                      }
+                    />
+                    <input
+                      aria-label="Mínimo"
+                      placeholder="Mínimo"
+                      type="number"
+                      step="any"
+                      value={s.min ?? ""}
+                      onChange={(e) =>
+                        setProductForm((f) => ({
+                          ...f,
+                          specifications: f.specifications.map((x, j) =>
+                            j === i
+                              ? {
+                                  ...x,
+                                  min:
+                                    e.target.value === ""
+                                      ? undefined
+                                      : Number(e.target.value),
+                                }
+                              : x,
+                          ),
+                        }))
+                      }
+                    />
+                    <input
+                      aria-label="Máximo"
+                      placeholder="Máximo"
+                      type="number"
+                      step="any"
+                      value={s.max ?? ""}
+                      onChange={(e) =>
+                        setProductForm((f) => ({
+                          ...f,
+                          specifications: f.specifications.map((x, j) =>
+                            j === i
+                              ? {
+                                  ...x,
+                                  max:
+                                    e.target.value === ""
+                                      ? undefined
+                                      : Number(e.target.value),
+                                }
+                              : x,
+                          ),
+                        }))
+                      }
+                    />
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={s.required}
+                        onChange={(e) =>
+                          setProductForm((f) => ({
+                            ...f,
+                            specifications: f.specifications.map((x, j) =>
+                              j === i
+                                ? { ...x, required: e.target.checked }
+                                : x,
+                            ),
+                          }))
+                        }
+                      />{" "}
+                      Obrigatória
+                    </label>
+                  </div>
+                ))}
+                <div className="actions">
+                  <button
+                    onClick={() =>
+                      setProductForm((f) => ({
+                        ...f,
+                        specifications: [...f.specifications, emptySpec()],
+                      }))
+                    }
+                  >
+                    Adicionar análise
+                  </button>
+                  <button
+                    className="primary"
+                    disabled={busy}
+                    onClick={() =>
+                      run(
+                        () =>
+                          db.rpc("pilot_save_product", {
+                            p_code: productForm.code,
+                            p_name: productForm.name,
+                            p_family: productForm.family,
+                            p_specs: productForm.specifications,
+                          }),
+                        "Produto salvo.",
+                        () =>
+                          setProductForm({
+                            code: "",
+                            name: "",
+                            family: "Resina",
+                            specifications: [emptySpec()],
+                          }),
+                      )
+                    }
+                  >
+                    Salvar produto
+                  </button>
+                </div>
+                <hr />
+                {products.map((p) => (
+                  <div className="list-row" key={p.id}>
+                    <strong>
+                      {p.code} · {p.name}
+                    </strong>
+                    <small>
+                      {p.family} · v{p.version} · {p.specifications.length}{" "}
+                      análises
+                    </small>
+                  </div>
+                ))}
+              </section>
+              <section className="card">
+                <h2>Tanque</h2>
+                <Field label="Código">
+                  <input
+                    value={tankForm.code}
+                    onChange={(e) =>
+                      setTankForm((f) => ({ ...f, code: e.target.value }))
+                    }
+                  />
+                </Field>
+                <Field label="Família">
+                  <select
+                    value={tankForm.family}
+                    onChange={(e) =>
+                      setTankForm((f) => ({ ...f, family: e.target.value }))
+                    }
+                  >
+                    <option>Resina</option>
+                    <option>Emulsão</option>
+                  </select>
+                </Field>
+                <button
+                  className="primary"
+                  disabled={busy}
+                  onClick={() =>
+                    run(
+                      () =>
+                        db.rpc("pilot_save_tank", {
+                          p_code: tankForm.code,
+                          p_family: tankForm.family,
+                        }),
+                      "Tanque salvo.",
+                      () => setTankForm({ code: "", family: "Resina" }),
+                    )
+                  }
+                >
+                  Cadastrar tanque
+                </button>
+                <hr />
+                {tanks.map((t) => (
+                  <div className="list-row" key={t.id}>
+                    <strong>{t.code}</strong>
+                    <small>{t.family}</small>
+                  </div>
+                ))}
+              </section>
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+function localTimeFrom(value: string) {
+  const d = new Date(value);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+}
+function LoadingTable({
+  rows,
+  cycleFor,
+  productFor,
+  open,
+}: {
+  rows: Loading[];
+  cycleFor: (l: Loading) => Cycle | undefined;
+  productFor: (c?: Cycle) => Product | undefined;
+  open: (l: Loading) => void;
+}) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Registro</th>
+            <th>Placa</th>
+            <th>Produto</th>
+            <th>Destino</th>
+            <th>Data</th>
+            <th>Situação</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((l) => (
+            <tr
+              key={l.id}
+              onClick={() => open(l)}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") open(l);
+              }}
+            >
+              <td>
+                <strong>
+                  {l.certificate_number ||
+                    `CAR-${String(l.id).padStart(4, "0")}`}
+                </strong>
+              </td>
+              <td>{l.plate}</td>
+              <td>{productFor(cycleFor(l))?.name || "—"}</td>
+              <td>{l.destination}</td>
+              <td>{date(l.loaded_at)}</td>
+              <td>
+                <Pill state={l.state} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length === 0 && (
+        <p className="empty">Nenhum registro encontrado.</p>
+      )}
+    </div>
+  );
+}
