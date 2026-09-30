@@ -189,6 +189,113 @@ p {
   font-size: 14px;
   margin-bottom: 0;
 }
+.home-heading {
+  align-items: flex-end;
+}
+.home-heading .eyebrow {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 10px;
+}
+.home-heading p {
+  max-width: 650px;
+}
+.home-skip {
+  flex: none;
+  border: 0 !important;
+  background: transparent !important;
+  color: #347a52 !important;
+  padding: 8px 0 !important;
+  font-size: 12px;
+}
+.home-skip:hover,
+.home-secondary:hover,
+.flow-secondary:hover {
+  text-decoration: underline;
+}
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 13px;
+}
+.flow-card {
+  min-width: 0;
+  min-height: 292px;
+  display: flex;
+  flex-direction: column;
+  padding: 19px;
+  background: #fff;
+  border: 1px solid #e0e9e3;
+  border-radius: 14px;
+  box-shadow: 0 4px 20px #24442c08;
+}
+.flow-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 21px;
+}
+.flow-number {
+  display: grid;
+  place-items: center;
+  width: 35px;
+  height: 35px;
+  flex: none;
+  border-radius: 11px;
+  background: #e9f5ed;
+  color: #247247;
+  font: 800 13px Manrope, sans-serif;
+}
+.flow-count {
+  color: #718277;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+}
+.flow-card h2 {
+  margin-bottom: 9px;
+  font-size: 16px;
+}
+.flow-card > p {
+  margin-bottom: 12px;
+  color: #6d7e74;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.flow-card .flow-note {
+  margin-top: 0;
+  padding-left: 9px;
+  border-left: 2px solid #b9dcc5;
+  color: #64776b;
+  font-size: 11px;
+}
+.flow-actions {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+.flow-actions button {
+  width: 100%;
+  min-height: 38px !important;
+  padding: 8px 9px !important;
+  font-size: 11px;
+}
+.flow-actions .flow-link {
+  border-color: #227248 !important;
+  background: #227248 !important;
+  color: #fff !important;
+}
+.flow-actions .flow-link:hover {
+  background: #185d3a !important;
+}
+.flow-actions .flow-secondary {
+  border: 0 !important;
+  background: transparent !important;
+  color: #347a52 !important;
+}
 .primary {
   background: #227248 !important;
   color: #fff !important;
@@ -616,6 +723,11 @@ hr {
   font-size: 14px;
   color: #183827;
 }
+@media (max-width: 1120px) {
+  .flow-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @media (max-width: 900px) {
   .sidebar {
     width: 68px;
@@ -691,9 +803,13 @@ hr {
   }
   .metrics,
   .card-grid,
+  .flow-grid,
   .form-grid,
   .analysis-list {
     grid-template-columns: 1fr;
+  }
+  .flow-card {
+    min-height: 0;
   }
   .card {
     padding: 17px;
