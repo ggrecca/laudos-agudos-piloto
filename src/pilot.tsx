@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { createClient, type Session } from "@supabase/supabase-js";
 import {
+  Home,
   Droplets,
   FileCheck2,
   FlaskConical,
@@ -95,6 +96,7 @@ type Approval = {
   decided_at: string;
 };
 type View =
+  | "Início"
   | "Carregamentos"
   | "Autorizações"
   | "Laudos"
@@ -102,10 +104,11 @@ type View =
   | "Cadastros"
   | "Usuários";
 const views: { name: View; icon: typeof Truck }[] = [
+  { name: "Início", icon: Home },
+  { name: "Ciclos e tanques", icon: Droplets },
   { name: "Carregamentos", icon: Truck },
   { name: "Autorizações", icon: ShieldCheck },
   { name: "Laudos", icon: FileCheck2 },
-  { name: "Ciclos e tanques", icon: Droplets },
   { name: "Cadastros", icon: FlaskConical },
   { name: "Usuários", icon: UsersRound },
 ];
@@ -168,6 +171,34 @@ function ErrorNotice({ text }: { text: string }) {
     </div>
   ) : null;
 }
+function FlowStep({
+  number,
+  count,
+  title,
+  description,
+  note,
+  children,
+}: {
+  number: string;
+  count: string;
+  title: string;
+  description: string;
+  note?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flow-card">
+      <div className="flow-card-top">
+        <span className="flow-number">{number}</span>
+        <span className="flow-count">{count}</span>
+      </div>
+      <h2>{title}</h2>
+      <p>{description}</p>
+      {note && <p className="flow-note">{note}</p>}
+      <div className="flow-actions">{children}</div>
+    </section>
+  );
+}
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -178,7 +209,7 @@ export function App() {
   const [loadings, setLoadings] = useState<Loading[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingProfile[]>([]);
-  const [view, setView] = useState<View>("Carregamentos");
+  const [view, setView] = useState<View>("Início");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
@@ -282,6 +313,15 @@ export function App() {
     if (session) refresh().catch((e) => setNotice(e.message));
     else setProfile(null);
   }, [session?.user.id]);
+  useEffect(() => {
+    if (!session?.user.id || profile?.status !== "Ativo") return;
+    const key = `laudos-agudos:onboarding:v1:${session.user.id}`;
+    try {
+      setView(window.localStorage.getItem(key) ? "Carregamentos" : "Início");
+    } catch {
+      setView("Início");
+    }
+  }, [session?.user.id, profile?.status]);
   async function run(
     task: () => PromiseLike<{ error: { message: string } | null }>,
     message: string,
@@ -346,6 +386,25 @@ export function App() {
   const canApproveException =
     profile?.role === "Supervisor" || profile?.role === "Administrador";
   const activeCycles = cycles.filter((c) => c.active);
+  const hasActiveProductTankPair = tanks.some(
+    (tank) =>
+      tank.active &&
+      products.some(
+        (product) => product.active && product.family === tank.family,
+      ),
+  );
+  const canCreateCycle =
+    internal &&
+    tanks.some(
+      (tank) =>
+        tank.active &&
+        !activeCycles.some((cycle) => cycle.tank_id === tank.id) &&
+        products.some(
+          (product) => product.active && product.family === tank.family,
+        ),
+    );
+  const ongoingCount = loadings.filter((l) => l.state !== "Emitido").length;
+  const issuedCount = loadings.filter((l) => l.state === "Emitido").length;
   const cycleFor = (l: Loading) => cycles.find((c) => c.id === l.cycle_id);
   const productFor = (c?: Cycle) =>
     products.find((p) => p.id === c?.product_id);
@@ -430,6 +489,38 @@ export function App() {
       ))}
     </div>
   );
+
+  function markOnboardingSeen() {
+    if (!session?.user.id) return;
+    try {
+      window.localStorage.setItem(
+        `laudos-agudos:onboarding:v1:${session.user.id}`,
+        "1",
+      );
+    } catch {
+      // A orientação continua acessível em Início mesmo sem armazenamento local.
+    }
+  }
+  function navigateTo(nextView: View) {
+    if (nextView !== "Início") markOnboardingSeen();
+    setView(nextView);
+    setSelected(null);
+    setNewLoading(false);
+    setNewCycle(false);
+    setNotice("");
+  }
+  function startNewCycle() {
+    navigateTo("Ciclos e tanques");
+    setNewCycle(true);
+    setCycleForm({
+      tank_id: 0,
+      product_id: 0,
+      manufactured_at: localTime(),
+      lots: "",
+      analyst: profile?.name || "",
+      reference_values: [],
+    });
+  }
 
   if (!url || !key)
     return (
@@ -541,6 +632,7 @@ export function App() {
     );
 
   function openLoading(c?: Cycle) {
+    markOnboardingSeen();
     const chosen = c || activeCycles[0];
     setLoadingForm({
       ...emptyLoading(),
@@ -554,6 +646,9 @@ export function App() {
     setNotice("");
   }
   function openExisting(l: Loading) {
+    markOnboardingSeen();
+    setView("Carregamentos");
+    setNewCycle(false);
     setLoadingForm({
       cycle_id: l.cycle_id,
       plate: l.plate,
@@ -613,13 +708,7 @@ export function App() {
                 <button
                   key={v.name}
                   className={view === v.name ? "active" : ""}
-                  onClick={() => {
-                    setView(v.name);
-                    setSelected(null);
-                    setNewLoading(false);
-                    setNewCycle(false);
-                    setNotice("");
-                  }}
+                  onClick={() => navigateTo(v.name)}
                 >
                   <Icon size={18} />
                   {v.name}
@@ -650,7 +739,121 @@ export function App() {
           <span>{new Date().toLocaleDateString("pt-BR")}</span>
         </header>
         <ErrorNotice text={notice} />
-        {showLoading && view === "Carregamentos" ? (
+        {view === "Início" ? (
+          <>
+            <div className="heading home-heading">
+              <div>
+                <span className="eyebrow">COMECE POR AQUI</span>
+                <h1>Do ciclo ao laudo</h1>
+                <p>
+                  Siga estas etapas para registrar uma análise e emitir o
+                  certificado de qualidade.
+                </p>
+              </div>
+              <button
+                className="home-skip"
+                onClick={() => navigateTo("Carregamentos")}
+              >
+                Ir direto para carregamentos
+              </button>
+            </div>
+            <div className="flow-grid" aria-label="Etapas do fluxo de trabalho">
+              <FlowStep
+                number="01"
+                count={`${activeCycles.length} ciclo${activeCycles.length === 1 ? "" : "s"} ativo${activeCycles.length === 1 ? "" : "s"}`}
+                title="Prepare o ciclo"
+                description="Selecione tanque e produto e informe fabricação, lotes e valores de referência."
+                note={
+                  !activeCycles.length
+                    ? profile.role === "Administrador"
+                      ? hasActiveProductTankPair
+                        ? undefined
+                        : "Antes do primeiro ciclo, configure produtos e tanques em Cadastros."
+                      : "Sem ciclo ativo? Peça ao responsável para abrir um ciclo."
+                    : undefined
+                }
+              >
+                {profile.role === "Administrador" &&
+                !hasActiveProductTankPair ? (
+                  <button
+                    className="flow-link"
+                    onClick={() => navigateTo("Cadastros")}
+                  >
+                    Configurar produtos e tanques
+                  </button>
+                ) : (
+                  <button
+                    className="flow-link"
+                    onClick={() =>
+                      canCreateCycle
+                        ? startNewCycle()
+                        : navigateTo("Ciclos e tanques")
+                    }
+                  >
+                    {canCreateCycle ? "Iniciar novo ciclo" : "Ver ciclos e tanques"}
+                  </button>
+                )}
+              </FlowStep>
+              <FlowStep
+                number="02"
+                count={`${ongoingCount} em andamento`}
+                title="Registre o carregamento"
+                description="Informe os dados do caminhão e os resultados das análises do produto."
+                note={
+                  internal && !activeCycles.length
+                    ? "É necessário haver um ciclo ativo para registrar."
+                    : undefined
+                }
+              >
+                <button
+                  className="flow-link"
+                  onClick={() =>
+                    internal && activeCycles.length
+                      ? openLoading()
+                      : navigateTo("Carregamentos")
+                  }
+                >
+                  {internal && activeCycles.length
+                    ? "Novo carregamento"
+                    : "Ver carregamentos"}
+                </button>
+              </FlowStep>
+              <FlowStep
+                number="03"
+                count={`${pending.length} pendente${pending.length === 1 ? "" : "s"}`}
+                title="Trate as autorizações"
+                description="Se uma análise exigir aprovação, o supervisor decide se o carregamento pode seguir."
+                note="Esta etapa só se aplica quando houver uma exceção."
+              >
+                <button
+                  className="flow-link"
+                  onClick={() => navigateTo("Autorizações")}
+                >
+                  Ver autorizações
+                </button>
+              </FlowStep>
+              <FlowStep
+                number="04"
+                count={`${issuedCount} emitido${issuedCount === 1 ? "" : "s"}`}
+                title="Emita e consulte o laudo"
+                description="Com o carregamento liberado, emita o certificado. Os documentos emitidos ficam em Laudos."
+              >
+                <button
+                  className="flow-link"
+                  onClick={() => navigateTo("Carregamentos")}
+                >
+                  Ver carregamentos
+                </button>
+                <button
+                  className="flow-secondary"
+                  onClick={() => navigateTo("Laudos")}
+                >
+                  Consultar laudos emitidos
+                </button>
+              </FlowStep>
+            </div>
+          </>
+        ) : showLoading && view === "Carregamentos" ? (
           <>
             <div className="heading">
               <div>
