@@ -757,7 +757,10 @@ export function App() {
                 Ir direto para carregamentos
               </button>
             </div>
-            <div className="flow-grid" aria-label="Etapas do fluxo de trabalho">
+            <section
+              className="flow-grid"
+              aria-label="Etapas do fluxo de trabalho"
+            >
               <FlowStep
                 number="01"
                 count={`${activeCycles.length} ciclo${activeCycles.length === 1 ? "" : "s"} ativo${activeCycles.length === 1 ? "" : "s"}`}
@@ -851,7 +854,7 @@ export function App() {
                   Consultar laudos emitidos
                 </button>
               </FlowStep>
-            </div>
+            </section>
           </>
         ) : showLoading && view === "Carregamentos" ? (
           <>
