@@ -1084,3 +1084,6 @@ hr {
   .result-state { font-size: 10px; }
   .cert-head, .cert-conclusion, .result-state { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
+
+/* Separate analytical responsibles from authorization records on screen and print. */
+.cert-responsibles + .cert-authorizations:not(:empty) { margin-top: 28px; }
