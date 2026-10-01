@@ -139,6 +139,12 @@ const emptyLoading = (): Omit<
   observation: "",
 });
 const emptySpec = (): Spec => ({ name: "", unit: "", required: true });
+const consultationUnits = [
+  "Agudos/SP",
+  "Itapetininga/SP",
+  "Uberaba/MG",
+  "Taquari/RS",
+];
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -1525,7 +1531,11 @@ export function App() {
                           onClick={() => {
                             setUserDecision({ user, approve: true });
                             setUserRole("Consulta");
-                            setUserDestination(user.destination || "");
+                            setUserDestination(
+                              consultationUnits.includes(user.destination || "")
+                                ? user.destination!
+                                : "",
+                            );
                             setUserReason("");
                           }}
                         >
@@ -1578,13 +1588,19 @@ export function App() {
                         </select>
                       </Field>
                       {userRole === "Consulta" && (
-                        <Field label="Destino / unidade">
-                          <input
+                        <Field label="Unidade">
+                          <select
                             required
                             value={userDestination}
                             onChange={(e) => setUserDestination(e.target.value)}
-                            placeholder="Ex.: Unidade Duratex"
-                          />
+                          >
+                            <option value="">Selecione a unidade</option>
+                            {consultationUnits.map((unit) => (
+                              <option key={unit} value={unit}>
+                                {unit}
+                              </option>
+                            ))}
+                          </select>
                         </Field>
                       )}
                       <Field label="Observação (opcional)">
@@ -1613,7 +1629,7 @@ export function App() {
                       disabled={
                         busy ||
                         (userDecision.approve
-                          ? userRole === "Consulta" && !userDestination.trim()
+                          ? userRole === "Consulta" && !consultationUnits.includes(userDestination)
                           : userReason.trim().length < 3)
                       }
                       onClick={() =>

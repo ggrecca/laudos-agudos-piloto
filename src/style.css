@@ -105,9 +105,10 @@ p {
 }
 .sidebar .brand-logo {
   width: 132px;
-  padding: 9px 10px;
-  background: #fff;
-  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  filter: brightness(0) invert(1);
 }
 .brand strong {
   line-height: 1.4;
@@ -162,7 +163,7 @@ p {
   max-width: 1640px;
   width: 100%;
   padding: 0 40px 80px;
-  margin: auto;
+  margin: 0 auto;
   min-width: 0;
   align-self: stretch;
 }
@@ -183,7 +184,7 @@ p {
 }
 .heading {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
   margin: 31px 0 25px;
@@ -194,7 +195,7 @@ p {
   margin-bottom: 0;
 }
 .home-heading {
-  align-items: flex-end;
+  align-items: flex-start;
 }
 .home-heading .eyebrow {
   display: inline-block;
