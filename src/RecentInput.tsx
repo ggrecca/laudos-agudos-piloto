@@ -8,8 +8,10 @@ type Props = {
   disabled?: boolean;
   placeholder?: string;
   multiline?: boolean;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
 };
-export function RecentInput({ label, value, options, onChange, disabled, placeholder, multiline }: Props) {
+export function RecentInput({ label, value, options, onChange, disabled, placeholder, multiline, "aria-invalid": invalid, "aria-describedby": describedBy }: Props) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
@@ -29,6 +31,7 @@ export function RecentInput({ label, value, options, onChange, disabled, placeho
   }
   const props = {
     value, disabled, placeholder, autoComplete: "off",
+    "aria-invalid": invalid, "aria-describedby": describedBy,
     role: "combobox" as const, "aria-label": label, "aria-expanded": shown,
     "aria-autocomplete": "list" as const, "aria-controls": shown ? id : undefined,
     "aria-activedescendant": shown && active >= 0 ? id + "-" + active : undefined,

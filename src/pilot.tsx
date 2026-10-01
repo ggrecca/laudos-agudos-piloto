@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { RecentInput } from "./RecentInput";
-import { inspectAnalyses, errorMessage } from "./flow";
+import { inspectAnalyses, loadingValidation, cycleValidation, approvalReasons, authorizationNeeds, effectiveLoadingState, errorMessage, type ValidationIssue } from "./flow";
+import { Certificate, type CertificateTrace } from "./Certificate";
 import { createClient, type Session } from "@supabase/supabase-js";
 import {
   Home,
@@ -44,7 +45,7 @@ type PendingProfile = {
   destination: string | null;
   created_at: string;
 };
-type Spec = {
+export type Spec = {
   name: string;
   unit: string;
   min?: number;
@@ -52,7 +53,7 @@ type Spec = {
   required: boolean;
   qual?: string[];
 };
-type Product = {
+export type Product = {
   id: number;
   code: string;
   name: string;
@@ -61,8 +62,8 @@ type Product = {
   version: number;
   active: boolean;
 };
-type Tank = { id: number; code: string; family: string; active: boolean };
-type Cycle = {
+export type Tank = { id: number; code: string; family: string; active: boolean };
+export type Cycle = {
   id: number;
   tank_id: number;
   product_id: number;
@@ -74,7 +75,7 @@ type Cycle = {
   analyst: string;
   active: boolean;
 };
-type Loading = {
+export type Loading = {
   id: number;
   cycle_id: number;
   plate: string;
@@ -148,20 +149,24 @@ const consultationUnits = [
   "Taquari/RS",
 ];
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      {children}
-    </label>
-  );
+function Field({ label, children, error, fieldKey }: { label: string; children: ReactNode; error?: string; fieldKey?: string }) {
+  const errorId = useId();
+  const controls = Children.map(children, child => {
+    if (!isValidElement<{ "aria-invalid"?: boolean; "aria-describedby"?: string }>(child)) return child;
+    if (child.type !== "input" && child.type !== "select" && child.type !== "textarea" && child.type !== RecentInput) return child;
+    return cloneElement(child, { "aria-invalid": !!error, "aria-describedby": error ? errorId : undefined });
+  });
+  return <label className={"field" + (error ? " invalid-field" : "")} data-field={fieldKey}>
+    <span>{label}</span>{controls}
+    {error && <span className="field-error" id={errorId}>{error}</span>}
+  </label>;
 }
 function Pill({ state }: { state: string }) {
   return (
     <span
       className={
         "pill " +
-        (state === "Emitido"
+        ((state === "Emitido" || state === "Autorizado para emissão")
           ? "green"
           : state === "Aguardando autorização"
             ? "amber"
@@ -181,11 +186,32 @@ function ErrorNotice({ text }: { text: string }) {
     </div>
   ) : null;
 }
-function ValidationNotice({ errors }: { errors: string[] }) {
+function ValidationNotice({ errors, focus }: { errors: string[]; focus?: () => void }) {
   return errors.length ? <div className="validation-notice" role="alert">
     <strong>Confira os campos abaixo:</strong>
-    <ul>{errors.map(error => <li key={error}>{error}</li>)}</ul>
+    <ul>{errors.slice(0, 4).map(error => <li key={error}>{error}</li>)}</ul>
+    {errors.length > 4 && <p>Há mais {errors.length - 4} campos para revisar.</p>}
+    {focus && <button type="button" className="text-button" onClick={focus}>Ir para o primeiro campo</button>}
   </div> : null;
+}
+function focusValidation(issues: ValidationIssue[]) {
+  if (!issues.length) return;
+  window.requestAnimationFrame(() => {
+    const field = Array.from(document.querySelectorAll<HTMLElement>("[data-field]")).find(el => el.dataset.field === issues[0].field);
+    field?.scrollIntoView({ behavior: "smooth", block: "center" });
+    field?.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input:not(:disabled), select:not(:disabled), textarea:not(:disabled)")?.focus({ preventScroll: true });
+  });
+}
+function FloatingNotice({ text, tone, dismiss }: { text: string; tone: "error" | "success" | "info"; dismiss: () => void }) {
+  return text ? <div className={"floating-notice " + tone} role={tone === "error" ? "alert" : "status"}>
+    <span>{text}</span><button type="button" aria-label="Fechar mensagem" onClick={dismiss}><X size={18} /></button>
+  </div> : null;
+}
+function AuthorizationReasons({ reasons }: { reasons: string[] }) {
+  return reasons.length ? <section className="authorization-reasons" aria-label="Motivos da autorização">
+    <strong>Motivos da autorização</strong>
+    <ul>{reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
+  </section> : null;
 }
 function FlowStep({
   number,
@@ -228,6 +254,11 @@ export function App() {
   const [view, setView] = useState<View>("Início");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [noticeTone, setNoticeTone] = useState<"error" | "success" | "info">("info");
+  const refreshRequest = useRef(0);
+  const [certificateTrace, setCertificateTrace] = useState<CertificateTrace | null>(null);
+  const [certificateTraceError, setCertificateTraceError] = useState("");
+  const [traceRetry, setTraceRetry] = useState(0);
   const inFlight = useRef(false);
   const ownResults = useRef<string[]>([]);
   const [cycleAttempted, setCycleAttempted] = useState(false);
@@ -281,12 +312,14 @@ export function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
   async function refresh() {
+    const request = ++refreshRequest.current;
     const profileResult = await db.from("pilot_profiles").select("*").single();
     if (profileResult.error) throw profileResult.error;
     const nextProfile = profileResult.data as Profile;
-    setProfile(nextProfile);
+    if (request !== refreshRequest.current) return;
     const active = nextProfile.active && nextProfile.status === "Ativo";
     if (!active) {
+      setProfile(nextProfile);
       setProducts([]);
       setTanks([]);
       setCycles([]);
@@ -323,6 +356,8 @@ export function App() {
       pendingResult,
     ])
       if (result.error) throw result.error;
+    if (request !== refreshRequest.current) return;
+    setProfile(nextProfile);
     setProducts((productsResult.data || []) as Product[]);
     setTanks((tanksResult.data || []) as Tank[]);
     setCycles((cyclesResult.data || []) as Cycle[]);
@@ -331,8 +366,9 @@ export function App() {
     setPendingUsers((pendingResult.data || []) as PendingProfile[]);
   }
   useEffect(() => {
-    if (session) refresh().catch((e) => setNotice(e.message));
-    else setProfile(null);
+    if (session) refresh().catch((e) => { setNoticeTone("error"); setNotice(errorMessage(e)); });
+    else { setProfile(null); setLoadings([]); setApprovals([]); setCertificateTrace(null); }
+    return () => { refreshRequest.current += 1; };
   }, [session?.user.id]);
   useEffect(() => {
     if (!session?.user.id || profile?.status !== "Ativo") return;
@@ -343,6 +379,35 @@ export function App() {
       setView("Início");
     }
   }, [session?.user.id, profile?.status]);
+  const hasAwaitingLoadings = loadings.some(l => l.state === "Aguardando autorização");
+  useEffect(() => {
+    if (!session?.user.id || profile?.status !== "Ativo") return;
+    const update = () => {
+      if (document.visibilityState !== "visible" || inFlight.current) return;
+      refresh().catch(e => { setNoticeTone("error"); setNotice(errorMessage(e)); });
+    };
+    window.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", update);
+    const interval = hasAwaitingLoadings ? window.setInterval(update, 20000) : undefined;
+    return () => {
+      window.removeEventListener("focus", update);
+      document.removeEventListener("visibilitychange", update);
+      if (interval !== undefined) window.clearInterval(interval);
+    };
+  }, [session?.user.id, profile?.status, hasAwaitingLoadings]);
+  const issuedLoading = loadings.find(l => l.id === selected && l.state === "Emitido");
+  useEffect(() => {
+    let cancelled = false;
+    setCertificateTrace(null); setCertificateTraceError("");
+    if (!issuedLoading) return;
+    db.rpc("pilot_certificate_details", { p_id: issuedLoading.id }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) { setCertificateTraceError(errorMessage(error)); return; }
+      setCertificateTrace(data as CertificateTrace);
+    }, error => { if (!cancelled) setCertificateTraceError(errorMessage(error)); });
+    return () => { cancelled = true; };
+  }, [issuedLoading?.id, issuedLoading?.edit_version, issuedLoading?.issued_at, session?.user.id, traceRetry]);
+
   async function run(
     task: () => PromiseLike<{ error: { message: string } | null; data?: unknown }>,
     message: string,
@@ -350,6 +415,7 @@ export function App() {
   ) {
     if (busy || inFlight.current) return;
     inFlight.current = true;
+    refreshRequest.current += 1;
     setBusy(true);
     setNotice("");
     try {
@@ -357,8 +423,10 @@ export function App() {
       if (result.error) throw result.error;
       await refresh();
       after?.(result.data);
+      setNoticeTone("success");
       setNotice(message);
     } catch (e) {
+      setNoticeTone("error");
       setNotice(errorMessage(e));
     } finally {
       inFlight.current = false;
@@ -395,6 +463,7 @@ export function App() {
         );
       }
     } catch (e) {
+      setNoticeTone("error");
       setNotice(errorMessage(e));
     } finally {
       setBusy(false);
@@ -435,23 +504,8 @@ export function App() {
   const tankFor = (c?: Cycle) => tanks.find((t) => t.id === c?.tank_id);
   const current = loadings.find((l) => l.id === selected);
   const currentCycle = current && cycleFor(current);
-  const needs = (l: Loading) => {
-    const c = cycleFor(l);
-    const analysis = c ? inspectAnalyses(c.specifications, l.values) : null;
-    const exception = !!analysis && (analysis.exception || analysis.errors.length > 0);
-    const granted = (kind: "reuse" | "exception") =>
-      approvals.some(
-        (a) =>
-          a.loading_id === l.id &&
-          a.edit_version === l.edit_version &&
-          a.kind === kind &&
-          a.decision === "approved",
-      );
-    return {
-      exception: exception && !granted("exception"),
-      reuse: l.source === "ref" && !granted("reuse"),
-    };
-  };
+  const needs = (l: Loading) => authorizationNeeds(l, cycleFor(l)?.specifications, approvals);
+  const stateFor = (l: Loading) => effectiveLoadingState(l, cycleFor(l)?.specifications, approvals);
   const pending = loadings.filter(
     (l) =>
       l.state === "Aguardando autorização" &&
@@ -480,6 +534,8 @@ export function App() {
       {c.specifications.map((s, i) => (
         <Field
           key={i}
+          fieldKey={"analysis-" + i}
+          error={loadingError("analysis-" + i)}
           label={`${s.name} ${s.unit ? `(${s.unit})` : ""}${s.required ? " *" : ""}`}
         >
           <RecentInput
@@ -742,32 +798,27 @@ export function App() {
       ...cycles.flatMap(c => fromCycle(c, c.reference_values)),
     ])];
   }
-  const validDate = (value: string) => !!value && Number.isFinite(Date.parse(value));
   const loadingAnalysis = selectedFormCycle
-    ? inspectAnalyses(selectedFormCycle.specifications, loadingForm.values, loadingAttempt !== "draft")
+    ? inspectAnalyses(selectedFormCycle.specifications, loadingForm.values)
     : { errors: [] as string[], exception: false };
-  const loadingErrors = [
-    ...(!selectedFormCycle ? ["Selecione um ciclo."] : []),
-    ...(!validDate(loadingForm.loaded_at) ? ["Informe a data e hora do carregamento."] : []),
-    ...(loadingForm.plate.trim().length < 7 ? ["Informe uma placa válida (mínimo de 7 caracteres)."] : []),
-    ...(["trailer", "carrier", "destination", "analyst"] as const).flatMap(key =>
-      !loadingForm[key].trim() ? [{ trailer: "Selecione a carreta.", carrier: "Informe a transportadora.", destination: "Selecione a unidade.", analyst: "Informe o responsável pela análise." }[key]] : []),
-    ...loadingAnalysis.errors,
-  ];
-  const cycleErrors = [
-    ...(!cycleForm.tank_id ? ["Selecione um tanque."] : []),
-    ...(!selectedCycleProduct ? ["Selecione um produto."] : []),
-    ...(!validDate(cycleForm.manufactured_at) ? ["Informe a data e hora de fabricação."] : []),
-    ...(!cycleForm.lots.trim() ? ["Informe os lotes."] : []),
-    ...(!cycleForm.analyst.trim() ? ["Informe o responsável pela análise."] : []),
-    ...(selectedCycleProduct ? inspectAnalyses(selectedCycleProduct.specifications, cycleForm.reference_values).errors : []),
-  ];
+  const loadingIssues = loadingValidation(loadingForm, selectedFormCycle?.specifications, loadingAttempt !== "draft");
+  const cycleIssues = cycleValidation(cycleForm, selectedCycleProduct?.specifications);
+  const loadingError = (field: string) => loadingAttempt ? loadingIssues.find(i => i.field === field)?.message : undefined;
+  const cycleError = (field: string) => cycleAttempted ? cycleIssues.find(i => i.field === field)?.message : undefined;
+  const loadingReasons = selectedFormCycle ? approvalReasons(selectedFormCycle.specifications, loadingForm.values, loadingForm.source) : [];
   const needsFormApproval = current && !hasUnsavedLoadingChanges
     ? needs(current).reuse || needs(current).exception
     : loadingForm.source === "ref" || loadingAnalysis.exception;
+  const traceForCurrent = current && certificateTrace?.loading_id === current.id && certificateTrace.edit_version === current.edit_version ? certificateTrace : null;
+  const canPrintCertificate = !!(traceForCurrent && currentCycle && productFor(currentCycle) && tankFor(currentCycle));
+  const decisionLoading = decision ? loadings.find(l => l.id === decision.id) : undefined;
+  const decisionReasons = decisionLoading ? approvalReasons(cycleFor(decisionLoading)?.specifications ?? [], decisionLoading.values, decisionLoading.source) : [];
   function submitCycle() {
     setCycleAttempted(true);
-    if (cycleErrors.length) { setNotice("Revise os campos indicados no cadastro do ciclo."); return; }
+    if (cycleIssues.length) {
+      setNoticeTone("error"); setNotice(cycleIssues[0].message);
+      focusValidation(cycleIssues); return;
+    }
     run(() => db.rpc("pilot_create_cycle", {
       p_tank_id: cycleForm.tank_id, p_product_id: cycleForm.product_id,
       p_manufactured_at: localDateTimeToIso(cycleForm.manufactured_at),
@@ -777,11 +828,11 @@ export function App() {
   }
   function submitLoading(action: "draft" | "request" | "issue") {
     setLoadingAttempt(action);
-    const errors = [
-      ...loadingErrors.filter(error => !loadingAnalysis.errors.includes(error)),
-      ...(selectedFormCycle ? inspectAnalyses(selectedFormCycle.specifications, loadingForm.values, action !== "draft").errors : []),
-    ];
-    if (errors.length) { setNotice("Revise os campos indicados no carregamento."); return; }
+    const issues = loadingValidation(loadingForm, selectedFormCycle?.specifications, action !== "draft");
+    if (issues.length) {
+      setNoticeTone("error"); setNotice(issues[0].message);
+      focusValidation(issues); return;
+    }
     const form = { ...loadingForm, plate: loadingForm.plate.trim().toUpperCase(),
       trailer: loadingForm.trailer.trim(), carrier: loadingForm.carrier.trim(),
       destination: loadingForm.destination.trim(), analyst: loadingForm.analyst.trim(),
@@ -870,7 +921,7 @@ export function App() {
           </span>
           <span>{new Date().toLocaleDateString("pt-BR")}</span>
         </header>
-        <ErrorNotice text={notice} />
+        <FloatingNotice text={notice} tone={noticeTone} dismiss={() => setNotice("")} />
         {view === "Início" ? (
           <>
             <div className="heading home-heading">
@@ -1009,14 +1060,14 @@ export function App() {
                     : `Ciclo ${current!.cycle_id} · ${productFor(currentCycle)?.name || ""}`}
                 </p>
               </div>
-              {current && <Pill state={current.state} />}
+              {current && <Pill state={stateFor(current)} />}
             </div>
             <div className="two-col">
               <section className="card">
                 <h2>Identificação e análise</h2>
-                {loadingAttempt && <ValidationNotice errors={loadingErrors} />}
+                {loadingAttempt && <ValidationNotice errors={loadingIssues.map(i => i.message)} focus={() => focusValidation(loadingIssues)} />}
                 <div className="form-grid">
-                  <Field label="Ciclo">
+                  <Field fieldKey="cycle_id" error={loadingError("cycle_id")} label="Ciclo">
                     <select
                       disabled={!newLoading}
                       value={loadingForm.cycle_id}
@@ -1041,7 +1092,7 @@ export function App() {
                       ))}
                     </select>
                   </Field>
-                  <Field label="Data e hora">
+                  <Field fieldKey="loaded_at" error={loadingError("loaded_at")} label="Data e hora">
                     <input
                       type="datetime-local"
                       disabled={!newLoading && !editLoading}
@@ -1054,24 +1105,24 @@ export function App() {
                       }
                     />
                   </Field>
-                  <Field label="Placa *">
+                  <Field fieldKey="plate" error={loadingError("plate")} label="Placa *">
                     <RecentInput label="Placa" disabled={!newLoading && !editLoading}
                       value={loadingForm.plate} options={suggestions("plate")} placeholder="Digite a placa"
                       onChange={plate => setLoadingForm(f => ({ ...f, plate: plate.toUpperCase() }))} />
                   </Field>
-                  <Field label="Carreta *">
+                  <Field fieldKey="trailer" error={loadingError("trailer")} label="Carreta *">
                     <select disabled={!newLoading && !editLoading} value={loadingForm.trailer}
                       onChange={e => setLoadingForm(f => ({ ...f, trailer: e.target.value }))}>
                       {[...new Set(["Única", "1ª carreta", "2ª carreta", ...suggestions("trailer"), loadingForm.trailer])].filter(Boolean)
                         .map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </Field>
-                  <Field label="Transportadora *">
+                  <Field fieldKey="carrier" error={loadingError("carrier")} label="Transportadora *">
                     <RecentInput label="Transportadora" disabled={!newLoading && !editLoading}
                       value={loadingForm.carrier} options={suggestions("carrier")} placeholder="Digite a transportadora"
                       onChange={carrier => setLoadingForm(f => ({ ...f, carrier }))} />
                   </Field>
-                  <Field label="Unidade / destino *">
+                  <Field fieldKey="destination" error={loadingError("destination")} label="Unidade / destino *">
                     <select disabled={!newLoading && !editLoading} value={loadingForm.destination}
                       onChange={e => setLoadingForm(f => ({ ...f, destination: e.target.value }))}>
                       <option value="">Selecione a unidade</option>
@@ -1080,7 +1131,7 @@ export function App() {
                       {consultationUnits.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </Field>
-                  <Field label="Responsável pela análise *">
+                  <Field fieldKey="analyst" error={loadingError("analyst")} label="Responsável pela análise *">
                     <RecentInput label="Responsável pela análise" disabled={!newLoading && !editLoading}
                       value={loadingForm.analyst} options={[...suggestions("analyst"), ...cycles.map(c => c.analyst)]}
                       placeholder="Digite o nome" onChange={analyst => setLoadingForm(f => ({ ...f, analyst }))} />
@@ -1128,7 +1179,9 @@ export function App() {
               <aside className="action-column">
                 <section className="card">
                   <h2>Próxima ação</h2>
-                  {current && <p className="muted">{current.certificate_number ? `Laudo ${current.certificate_number}` : current.state}</p>}
+                  {current && <p className="muted">{current.certificate_number ? `Laudo ${current.certificate_number}` : stateFor(current)}</p>}
+                  <AuthorizationReasons reasons={loadingReasons} />
+                  {loadingAttempt && <ValidationNotice errors={loadingIssues.map(i => i.message)} focus={() => focusValidation(loadingIssues)} />}
                   {(newLoading || editLoading) && (
                     <>
                       <button disabled={busy} onClick={() => submitLoading("draft")}>Salvar rascunho</button>
@@ -1145,7 +1198,7 @@ export function App() {
                     </>
                   )}
                   {current && internal && current.state === "Aguardando autorização" &&
-                    !needs(current).exception && !needs(current).reuse && (
+                    !needs(current).invalid && !needs(current).exception && !needs(current).reuse && (
                       <button className="primary" disabled={busy} onClick={() => submitLoading("issue")}>Emitir laudo</button>
                     )}
                   {current && current.state === "Aguardando autorização" && (
@@ -1156,10 +1209,11 @@ export function App() {
                       {needs(current).reuse
                         ? "Aguardando autorização da referência."
                         : ""}
+                      {stateFor(current) === "Autorizado para emissão" ? "Autorizações concedidas para esta versão. O laudo já pode ser emitido." : ""}
                     </p>
                   )}
                   {current?.certificate_number && (
-                    <button onClick={() => window.print()}>
+                    <button disabled={!canPrintCertificate} onClick={() => window.print()}>
                       Imprimir laudo
                     </button>
                   )}
@@ -1171,62 +1225,8 @@ export function App() {
               </aside>
             </div>
             {current?.certificate_number && (
-              <section className="card certificate">
-                <div className="cert-head">
-                  <strong>DEXCO · Agudos</strong>
-                  <span>Certificado de qualidade</span>
-                </div>
-                <h2>Laudo {current.certificate_number}</h2>
-                <div className="cert-grid">
-                  <span>
-                    Produto <strong>{productFor(currentCycle)?.name}</strong>
-                  </span>
-                  <span>
-                    Tanque <strong>{tankFor(currentCycle)?.code}</strong>
-                  </span>
-                  <span>
-                    Placa <strong>{current.plate}</strong>
-                  </span>
-                  <span>
-                    Destino <strong>{current.destination}</strong>
-                  </span>
-                  <span>
-                    Transportadora <strong>{current.carrier}</strong>
-                  </span>
-                  <span>
-                    Emissão <strong>{date(current.issued_at)}</strong>
-                  </span>
-                </div>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Análise</th>
-                      <th>Resultado</th>
-                      <th>Especificação</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {currentCycle?.specifications.map((s, i) => (
-                      <tr key={i}>
-                        <td>
-                          {s.name} {s.unit}
-                        </td>
-                        <td>{current.values[i]}</td>
-                        <td>
-                          {s.qual?.join(" / ") ||
-                            [
-                              s.min !== undefined ? `≥ ${s.min}` : "",
-                              s.max !== undefined ? `≤ ${s.max}` : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" · ") ||
-                            "Informativo"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
+              <Certificate loading={current} cycle={currentCycle} product={productFor(currentCycle)} tank={tankFor(currentCycle)}
+                trace={traceForCurrent} traceError={certificateTraceError} retry={() => setTraceRetry(n => n + 1)} />
             )}
           </>
         ) : view === "Carregamentos" ? (
@@ -1283,6 +1283,7 @@ export function App() {
                 rows={filtered}
                 cycleFor={cycleFor}
                 productFor={productFor}
+                stateFor={stateFor}
                 open={openExisting}
               />
             </section>
@@ -1300,6 +1301,7 @@ export function App() {
                 rows={pending}
                 cycleFor={cycleFor}
                 productFor={productFor}
+                stateFor={stateFor}
                 open={(l) => {
                   setView("Carregamentos");
                   openExisting(l);
@@ -1318,6 +1320,7 @@ export function App() {
                   <p>
                     {productFor(cycleFor(l))?.name} · {l.carrier}
                   </p>
+                  <AuthorizationReasons reasons={approvalReasons(cycleFor(l)?.specifications ?? [], l.values, l.source)} />
                 </div>
                 <div className="actions">
                   {needs(l).reuse &&
@@ -1400,6 +1403,7 @@ export function App() {
                       ? "resultado fora da especificação"
                       : "referência do tanque"}
                   </p>
+                  <AuthorizationReasons reasons={decisionReasons} />
                   <Field label="Justificativa obrigatória">
                     <textarea
                       autoFocus
@@ -1622,6 +1626,7 @@ export function App() {
                 rows={filtered.filter((l) => l.state === "Emitido")}
                 cycleFor={cycleFor}
                 productFor={productFor}
+                stateFor={stateFor}
                 open={(l) => {
                   setView("Carregamentos");
                   openExisting(l);
@@ -1658,9 +1663,9 @@ export function App() {
             {newCycle && (
               <section className="card">
                 <h2>Novo ciclo</h2>
-                {cycleAttempted && <ValidationNotice errors={cycleErrors} />}
+                {cycleAttempted && <ValidationNotice errors={cycleIssues.map(i => i.message)} focus={() => focusValidation(cycleIssues)} />}
                 <div className="form-grid">
-                  <Field label="Tanque">
+                  <Field fieldKey="tank_id" error={cycleError("tank_id")} label="Tanque">
                     <select
                       value={cycleForm.tank_id}
                       onChange={(e) =>
@@ -1686,7 +1691,7 @@ export function App() {
                         ))}
                     </select>
                   </Field>
-                  <Field label="Produto">
+                  <Field fieldKey="product_id" error={cycleError("product_id")} label="Produto">
                     <select
                       value={cycleForm.product_id}
                       onChange={(e) => {
@@ -1717,7 +1722,7 @@ export function App() {
                         ))}
                     </select>
                   </Field>
-                  <Field label="Fabricação · data e hora">
+                  <Field fieldKey="manufactured_at" error={cycleError("manufactured_at")} label="Fabricação · data e hora">
                     <input
                       type="datetime-local"
                       value={cycleForm.manufactured_at}
@@ -1729,11 +1734,11 @@ export function App() {
                       }
                     />
                   </Field>
-                  <Field label="Lotes *">
+                  <Field fieldKey="lots" error={cycleError("lots")} label="Lotes *">
                     <RecentInput label="Lotes" value={cycleForm.lots} options={cycles.map(c => c.lots)}
                       onChange={lots => setCycleForm(f => ({ ...f, lots }))} />
                   </Field>
-                  <Field label="Responsável pela análise *">
+                  <Field fieldKey="analyst" error={cycleError("analyst")} label="Responsável pela análise *">
                     <RecentInput label="Responsável pela análise" value={cycleForm.analyst}
                       options={[...loadings.map(l => l.analyst), ...cycles.map(c => c.analyst)]}
                       onChange={analyst => setCycleForm(f => ({ ...f, analyst }))} />
@@ -1743,7 +1748,7 @@ export function App() {
                   <>
                     <h3>Referência do tanque</h3>
                     {selectedCycleProduct.specifications.map((s, i) => (
-                      <Field key={i} label={`${s.name} ${s.unit}${s.required !== false ? " *" : ""}`}>
+                      <Field key={i} fieldKey={"reference-" + i} error={cycleError("reference-" + i)} label={`${s.name} ${s.unit}${s.required !== false ? " *" : ""}`}>
                         <RecentInput
                           label={s.name}
                           options={recentAnalysisValues(selectedCycleProduct.id, s)}
@@ -2236,11 +2241,13 @@ function LoadingTable({
   rows,
   cycleFor,
   productFor,
+  stateFor,
   open,
 }: {
   rows: Loading[];
   cycleFor: (l: Loading) => Cycle | undefined;
   productFor: (c?: Cycle) => Product | undefined;
+  stateFor: (l: Loading) => string;
   open: (l: Loading) => void;
 }) {
   return (
@@ -2281,7 +2288,7 @@ function LoadingTable({
               <td>{l.destination}</td>
               <td>{date(l.loaded_at)}</td>
               <td>
-                <Pill state={l.state} />
+                <Pill state={stateFor(l)} />
               </td>
               <td>
                 <button
