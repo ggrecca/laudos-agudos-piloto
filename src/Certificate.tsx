@@ -1,7 +1,7 @@
 import { analysisResult } from "./flow";
 import type { Loading, Cycle, Product, Tank } from "./pilot";
 
-type Identity = { name: string; role: string | null; identity_source: "snapshot" | "profile" | "unavailable" };
+type Identity = { name: string; role: string | null; identity_source: "snapshot" | "profile" | "account" | "unavailable" };
 export type CertificateTrace = {
   loading_id: number;
   edit_version: number;
@@ -17,7 +17,7 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
   const deviations = rows.filter(row => row.result.status === "nonconforming");
   const incomplete = !rows.length || rows.some(row => ["missing", "invalid"].includes(row.result.status));
   const exceptional = trace?.approvals.some(a => a.kind === "exception");
-  const legacy = trace && (trace.issuer.identity_source === "profile" || trace.approvals.some(a => a.identity_source === "profile"));
+  const legacy = trace && (["profile", "account"].includes(trace.issuer.identity_source) || trace.approvals.some(a => ["profile", "account"].includes(a.identity_source)));
   return <section className="card certificate" aria-label={"Laudo " + loading.certificate_number}>
     <div className="cert-head">
       <div><img src="/dexco-logo.png" alt="Dexco" width={160} /><strong>Fábricas Químicas - Agudos</strong></div>
@@ -72,7 +72,7 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
         : <p role={traceError ? "alert" : "status"}>{traceError || "Carregando identificação e autorizações…"}
           {traceError && <button className="no-print" onClick={retry}>Tentar novamente</button>}</p>}
       {deviations.length > 0 && <p className="cert-exception-note">A autorização permite a emissão e mantém os resultados fora da especificação identificados como não conformes.</p>}
-      {legacy && <p className="cert-legacy-note">Em registros anteriores a esta atualização, a identificação dos responsáveis foi consultada no cadastro atual.</p>}
+      {legacy && <p className="cert-legacy-note">Em registros anteriores a esta atualização, a identificação dos responsáveis foi consultada no cadastro ou conta atual.</p>}
     </section>
     <section className="cert-observations"><h3>Observações</h3><p>{loading.observation.trim() || "Sem observações adicionais."}</p></section>
     <footer className="cert-footer">Registro CAR-{String(loading.id).padStart(4, "0")} · Ciclo {loading.cycle_id} · Versão dos dados {loading.edit_version}</footer>
