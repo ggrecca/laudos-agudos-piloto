@@ -231,7 +231,8 @@ export function App() {
     family: "Resina",
     specifications: [emptySpec()],
   });
-  const [tankForm, setTankForm] = useState({ code: "", family: "Resina" });
+  const [tankForm, setTankForm] = useState({ code: "", family: "Resina", active: true });
+  const [tankEditingId, setTankEditingId] = useState<number | null>(null);
   const [decision, setDecision] = useState<{
     id: number;
     kind: "reuse" | "exception";
@@ -327,6 +328,7 @@ export function App() {
     message: string,
     after?: () => void,
   ) {
+    if (busy) return;
     setBusy(true);
     setNotice("");
     try {
@@ -502,6 +504,7 @@ export function App() {
     }
   }
   function navigateTo(nextView: View) {
+    if (showLoading && !confirmLeaveLoading()) return;
     if (nextView !== "Início") markOnboardingSeen();
     setView(nextView);
     setSelected(null);
@@ -668,6 +671,31 @@ export function App() {
   const editLoading =
     current && ["Rascunho", "Em correção"].includes(current.state) && internal;
   const showLoading = newLoading || !!current;
+  const hasUnsavedLoadingChanges =
+    !!current &&
+    !!editLoading &&
+    (loadingForm.plate !== current.plate ||
+      loadingForm.trailer !== current.trailer ||
+      loadingForm.carrier !== current.carrier ||
+      loadingForm.destination !== current.destination ||
+      loadingForm.analyst !== current.analyst ||
+      loadingForm.loaded_at !== localTimeFrom(current.loaded_at) ||
+      JSON.stringify(loadingForm.values) !== JSON.stringify(current.values) ||
+      loadingForm.source !== current.source ||
+      loadingForm.observation !== current.observation);
+  const hasNewLoadingInput =
+    newLoading &&
+    (!!loadingForm.plate.trim() ||
+      !!loadingForm.carrier.trim() ||
+      !!loadingForm.destination.trim() ||
+      !!loadingForm.observation.trim() ||
+      loadingForm.values.some((value) => !!value.trim()));
+  function confirmLeaveLoading() {
+    if (!hasUnsavedLoadingChanges && !hasNewLoadingInput) return true;
+    return window.confirm(
+      "Há alterações não salvas neste carregamento. Deseja descartá-las?",
+    );
+  }
   const selectedFormCycle = cycles.find((c) => c.id === loadingForm.cycle_id);
   const selectedCycleProduct = products.find(
     (p) => p.id === cycleForm.product_id,
@@ -862,10 +890,7 @@ export function App() {
               <div>
                 <button
                   className="back"
-                  onClick={() => {
-                    setSelected(null);
-                    setNewLoading(false);
-                  }}
+                  onClick={() => navigateTo("Carregamentos")}
                 >
                   ← Carregamentos
                 </button>
@@ -1063,6 +1088,11 @@ export function App() {
               <aside className="action-column">
                 <section className="card">
                   <h2>Próxima ação</h2>
+                  {hasUnsavedLoadingChanges && (
+                    <p className="helper" role="status">
+                      Salve as alterações antes de solicitar autorização ou emitir o laudo.
+                    </p>
+                  )}
                   {current && (
                     <p className="muted">
                       {current.certificate_number
@@ -1075,6 +1105,13 @@ export function App() {
                       className="primary"
                       disabled={busy || !selectedFormCycle}
                       onClick={() => {
+                        if (
+                          !loadingForm.loaded_at ||
+                          Number.isNaN(Date.parse(loadingForm.loaded_at))
+                        ) {
+                          setNotice("Informe uma data e hora válida.");
+                          return;
+                        }
                         const payload = {
                           p_cycle_id: loadingForm.cycle_id,
                           p_plate: loadingForm.plate,
@@ -1118,7 +1155,7 @@ export function App() {
                     editLoading &&
                     (needs(current).exception || needs(current).reuse) && (
                       <button
-                        disabled={busy}
+                        disabled={busy || hasUnsavedLoadingChanges}
                         onClick={() =>
                           run(
                             () =>
@@ -1140,6 +1177,7 @@ export function App() {
                         className="primary"
                         disabled={
                           busy ||
+                          hasUnsavedLoadingChanges ||
                           needs(current).exception ||
                           needs(current).reuse
                         }
@@ -2053,51 +2091,185 @@ export function App() {
                   </div>
                 ))}
               </section>
-              <section className="card">
-                <h2>Tanque</h2>
-                <Field label="Código">
-                  <input
-                    value={tankForm.code}
-                    onChange={(e) =>
-                      setTankForm((f) => ({ ...f, code: e.target.value }))
-                    }
-                  />
-                </Field>
-                <Field label="Família">
-                  <select
-                    value={tankForm.family}
-                    onChange={(e) =>
-                      setTankForm((f) => ({ ...f, family: e.target.value }))
-                    }
-                  >
-                    <option>Resina</option>
-                    <option>Emulsão</option>
-                  </select>
-                </Field>
-                <button
-                  className="primary"
-                  disabled={busy}
-                  onClick={() =>
-                    run(
-                      () =>
-                        db.rpc("pilot_save_tank", {
-                          p_code: tankForm.code,
-                          p_family: tankForm.family,
-                        }),
-                      "Tanque salvo.",
-                      () => setTankForm({ code: "", family: "Resina" }),
-                    )
-                  }
-                >
-                  Cadastrar tanque
-                </button>
-                <hr />
-                {tanks.map((t) => (
-                  <div className="list-row" key={t.id}>
-                    <strong>{t.code}</strong>
-                    <small>{t.family}</small>
+              <section className="card tank-management">
+                <div className="tank-header">
+                  <div>
+                    <h2>Tanques</h2>
+                    <p>Gerencie os cadastros usados para abrir ciclos de produção.</p>
                   </div>
-                ))}
+                  <span className="tank-count">{tanks.length} cadastrados</span>
+                </div>
+                <div className="tank-form">
+                  <Field label="Código">
+                    <input
+                      required
+                      autoComplete="off"
+                      disabled={busy}
+                      value={tankForm.code}
+                      onChange={(e) =>
+                        setTankForm((f) => ({ ...f, code: e.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Família">
+                    <select
+                      disabled={busy}
+                      value={tankForm.family}
+                      onChange={(e) =>
+                        setTankForm((f) => ({ ...f, family: e.target.value }))
+                      }
+                    >
+                      <option>Resina</option>
+                      <option>Emulsão</option>
+                    </select>
+                  </Field>
+                  {tankEditingId !== null && (
+                    <Field label="Situação">
+                      <select
+                        disabled={busy}
+                        value={String(tankForm.active)}
+                        onChange={(e) =>
+                          setTankForm((f) => ({
+                            ...f,
+                            active: e.target.value === "true",
+                          }))
+                        }
+                      >
+                        <option value="true">Ativo</option>
+                        <option value="false">Inativo</option>
+                      </select>
+                    </Field>
+                  )}
+                </div>
+                <div className="actions">
+                  <button
+                    className="primary"
+                    disabled={busy || !tankForm.code.trim()}
+                    onClick={() => {
+                      const code = tankForm.code.trim();
+                      if (tankEditingId !== null) {
+                        run(
+                          () =>
+                            db.rpc("pilot_update_tank", {
+                              p_id: tankEditingId,
+                              p_code: code,
+                              p_family: tankForm.family,
+                              p_active: tankForm.active,
+                            }),
+                          "Tanque atualizado.",
+                          () => {
+                            setTankEditingId(null);
+                            setTankForm({
+                              code: "",
+                              family: "Resina",
+                              active: true,
+                            });
+                          },
+                        );
+                        return;
+                      }
+                      run(
+                        () =>
+                          db.rpc("pilot_save_tank", {
+                            p_code: code,
+                            p_family: tankForm.family,
+                          }),
+                        "Tanque cadastrado.",
+                        () =>
+                          setTankForm({
+                            code: "",
+                            family: "Resina",
+                            active: true,
+                          }),
+                      );
+                    }}
+                  >
+                    {tankEditingId !== null
+                      ? "Salvar alterações"
+                      : "Cadastrar tanque"}
+                  </button>
+                  {tankEditingId !== null && (
+                    <button
+                      disabled={busy}
+                      onClick={() => {
+                        setTankEditingId(null);
+                        setTankForm({
+                          code: "",
+                          family: "Resina",
+                          active: true,
+                        });
+                      }}
+                    >
+                      Cancelar edição
+                    </button>
+                  )}
+                </div>
+                <hr />
+                {tanks.length === 0 ? (
+                  <p className="muted">Nenhum tanque cadastrado.</p>
+                ) : (
+                  <div className="tank-list" aria-label="Tanques cadastrados">
+                    {tanks.map((t) => (
+                      <div className="tank-row" key={t.id}>
+                        <div className="tank-details">
+                          <strong>{t.code}</strong>
+                          <small>{t.family}</small>
+                        </div>
+                        <span className={"pill " + (t.active ? "green" : "red")}>
+                          {t.active ? "Ativo" : "Inativo"}
+                        </span>
+                        <div className="actions">
+                          <button
+                            disabled={busy}
+                            onClick={() => {
+                              setTankEditingId(t.id);
+                              setTankForm({
+                                code: t.code,
+                                family: t.family,
+                                active: t.active,
+                              });
+                              setNotice("");
+                            }}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            disabled={busy}
+                            aria-label={`Excluir tanque ${t.code}`}
+                            onClick={() => {
+                              if (
+                                !window.confirm(
+                                  `Excluir o tanque ${t.code}? Tanques com ciclos associados não podem ser excluídos.`,
+                                )
+                              )
+                                return;
+                              run(
+                                () =>
+                                  db.rpc("pilot_delete_tank", { p_id: t.id }),
+                                "Tanque excluído.",
+                                () => {
+                                  if (tankEditingId === t.id) {
+                                    setTankEditingId(null);
+                                    setTankForm({
+                                      code: "",
+                                      family: "Resina",
+                                      active: true,
+                                    });
+                                  }
+                                },
+                              );
+                            }}
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="helper">
+                  Para preservar o histórico, tanques com ciclos associados só podem ser desativados.
+                </p>
               </section>
             </div>
           </>

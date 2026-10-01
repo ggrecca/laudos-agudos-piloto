@@ -899,3 +899,77 @@ hr {
     flex-wrap: wrap;
   }
 }
+
+.tank-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.tank-header h2 {
+  margin: 0;
+}
+.tank-header p {
+  color: #738579;
+  font-size: 12px;
+  margin: 5px 0 0;
+}
+.tank-count {
+  color: #738579;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tank-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.tank-form .field {
+  margin-bottom: 0;
+}
+.tank-list {
+  display: grid;
+}
+.tank-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 0;
+  border-bottom: 1px solid #e9efea;
+}
+.tank-details {
+  display: grid;
+  gap: 4px;
+}
+.tank-details strong {
+  color: #1b3c2b;
+  font-size: 14px;
+}
+.tank-details small {
+  color: #7c8e81;
+}
+.tank-row .actions {
+  margin-top: 0;
+}
+.tank-management .helper {
+  margin-bottom: 0;
+}
+@media (max-width: 620px) {
+  .tank-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .tank-row {
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+  .tank-row .tank-details {
+    grid-column: 1 / -1;
+  }
+  .tank-row .actions {
+    grid-column: 1 / -1;
+  }
+}
