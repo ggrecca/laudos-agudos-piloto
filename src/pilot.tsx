@@ -538,8 +538,14 @@ export function App() {
     return (
       <main className="login-layout">
         <section className="login-card">
-          <div className="brand-symbol">D</div>
-          <small className="eyebrow">DEXCO · AGUDOS</small>
+          <img
+            className="brand-logo"
+            src="/dexco-logo.png"
+            alt="Dexco"
+            width={213}
+            height={40}
+          />
+          <small className="eyebrow">Fábricas Químicas - Agudos</small>
           <h1>
             {authMode === "login" ? "Laudos de qualidade" : "Solicitar acesso"}
           </h1>
@@ -719,10 +725,16 @@ export function App() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-symbol">D</div>
+          <img
+            className="brand-logo"
+            src="/dexco-logo.png"
+            alt="Dexco"
+            width={213}
+            height={40}
+          />
           <div>
-            <strong>Laudos Agudos</strong>
-            <small>Piloto</small>
+            <strong>Fábricas Químicas - Agudos</strong>
+            <small>Laudos de qualidade</small>
           </div>
         </div>
         <nav>
