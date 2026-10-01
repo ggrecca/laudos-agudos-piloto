@@ -973,3 +973,25 @@ hr {
     grid-column: 1 / -1;
   }
 }
+
+.tank-row .actions {
+  gap: 6px;
+}
+.tank-row .actions .icon-button {
+  width: 36px;
+  height: 36px;
+  min-height: 36px !important;
+  padding: 0 !important;
+  color: #285340 !important;
+}
+.tank-row .actions .icon-button:hover {
+  border-color: #9cb9a7 !important;
+  background: #f3f8f5 !important;
+}
+.tank-row .actions .icon-button.danger {
+  color: #a63737 !important;
+}
+.tank-row .actions .icon-button.danger:hover {
+  border-color: #dbb1af !important;
+  background: #fff2f1 !important;
+}

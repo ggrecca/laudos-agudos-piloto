@@ -7,7 +7,9 @@ import {
   FlaskConical,
   LogOut,
   Plus,
+  Pencil,
   ShieldCheck,
+  Trash2,
   Truck,
   UsersRound,
   X,
@@ -2220,7 +2222,11 @@ export function App() {
                         </span>
                         <div className="actions">
                           <button
+                            type="button"
+                            className="icon-button"
                             disabled={busy}
+                            aria-label={`Editar tanque ${t.code}`}
+                            title={`Editar tanque ${t.code}`}
                             onClick={() => {
                               setTankEditingId(t.id);
                               setTankForm({
@@ -2231,11 +2237,14 @@ export function App() {
                               setNotice("");
                             }}
                           >
-                            Editar
+                            <Pencil size={16} aria-hidden="true" />
                           </button>
                           <button
+                            type="button"
+                            className="icon-button danger"
                             disabled={busy}
                             aria-label={`Excluir tanque ${t.code}`}
+                            title={`Excluir tanque ${t.code}`}
                             onClick={() => {
                               if (
                                 !window.confirm(
@@ -2260,7 +2269,7 @@ export function App() {
                               );
                             }}
                           >
-                            Excluir
+                            <Trash2 size={16} aria-hidden="true" />
                           </button>
                         </div>
                       </div>
