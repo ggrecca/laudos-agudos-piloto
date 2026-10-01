@@ -916,8 +916,8 @@ export function App() {
       <main className="main">
         <header className="topline">
           <span>
-            DEXCO <span className="slash">/</span> AGUDOS{" "}
-            <span className="slash">/</span> PILOTO
+            DEXCO <span className="slash">/</span> FÁBRICAS QUÍMICAS{" "}
+            <span className="slash">/</span> AGUDOS
           </span>
           <span>{new Date().toLocaleDateString("pt-BR")}</span>
         </header>
