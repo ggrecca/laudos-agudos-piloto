@@ -1010,3 +1010,13 @@ hr {
   border-color: #dbb1af !important;
   background: #fff2f1 !important;
 }
+
+/* Recent values and actionable validation in cycle/loading forms. */
+.recent-input { position: relative; width: 100%; }
+.recent-input > input, .recent-input > textarea { width: 100%; }
+.recent-options { position: absolute; top: 100%; left: 0; right: 0; z-index: 30; margin: 4px 0 0; padding: 4px; list-style: none; background: #fff; color: #163329; border: 1px solid #cbd8d0; border-radius: 10px; box-shadow: 0 8px 24px #16332926; max-height: 220px; overflow-y: auto; }
+.recent-options li { padding: 9px 10px; cursor: pointer; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.recent-options li:hover, .recent-options li.selected { background: #edf4ef; }
+.validation-notice { padding: 14px 16px; margin: 0 0 18px; border: 1px solid #ebc991; border-radius: 10px; background: #fff8eb; color: #754915; }
+.validation-notice ul { margin: 8px 0 0; padding-left: 20px; }
+.validation-notice li + li { margin-top: 5px; }

@@ -1,4 +1,6 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { RecentInput } from "./RecentInput";
+import { inspectAnalyses, errorMessage } from "./flow";
 import { createClient, type Session } from "@supabase/supabase-js";
 import {
   Home,
@@ -179,6 +181,12 @@ function ErrorNotice({ text }: { text: string }) {
     </div>
   ) : null;
 }
+function ValidationNotice({ errors }: { errors: string[] }) {
+  return errors.length ? <div className="validation-notice" role="alert">
+    <strong>Confira os campos abaixo:</strong>
+    <ul>{errors.map(error => <li key={error}>{error}</li>)}</ul>
+  </div> : null;
+}
 function FlowStep({
   number,
   count,
@@ -220,6 +228,10 @@ export function App() {
   const [view, setView] = useState<View>("Início");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const inFlight = useRef(false);
+  const ownResults = useRef<string[]>([]);
+  const [cycleAttempted, setCycleAttempted] = useState(false);
+  const [loadingAttempt, setLoadingAttempt] = useState<"draft" | "request" | "issue" | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [newLoading, setNewLoading] = useState(false);
   const [newCycle, setNewCycle] = useState(false);
@@ -332,22 +344,24 @@ export function App() {
     }
   }, [session?.user.id, profile?.status]);
   async function run(
-    task: () => PromiseLike<{ error: { message: string } | null }>,
+    task: () => PromiseLike<{ error: { message: string } | null; data?: unknown }>,
     message: string,
-    after?: () => void,
+    after?: (data: unknown) => void,
   ) {
-    if (busy) return;
+    if (busy || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setNotice("");
     try {
       const result = await task();
       if (result.error) throw result.error;
       await refresh();
-      after?.();
+      after?.(result.data);
       setNotice(message);
     } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e));
+      setNotice(errorMessage(e));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -381,7 +395,7 @@ export function App() {
         );
       }
     } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e));
+      setNotice(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -423,18 +437,8 @@ export function App() {
   const currentCycle = current && cycleFor(current);
   const needs = (l: Loading) => {
     const c = cycleFor(l);
-    const exception =
-      c?.specifications.some((s, i) => {
-        const v = l.values?.[i]?.trim();
-        if (!v) return !!s.required;
-        if (s.qual) return !s.qual.includes(v);
-        const n = Number(v.replace(",", "."));
-        return (
-          Number.isFinite(n) &&
-          ((s.min !== undefined && n < s.min) ||
-            (s.max !== undefined && n > s.max))
-        );
-      }) ?? false;
+    const analysis = c ? inspectAnalyses(c.specifications, l.values) : null;
+    const exception = !!analysis && (analysis.exception || analysis.errors.length > 0);
     const granted = (kind: "reuse" | "exception") =>
       approvals.some(
         (a) =>
@@ -470,6 +474,7 @@ export function App() {
     c: Cycle,
     values: string[],
     setter: (v: string[]) => void,
+    disabled = false,
   ) => (
     <div className="analysis-list">
       {c.specifications.map((s, i) => (
@@ -477,11 +482,14 @@ export function App() {
           key={i}
           label={`${s.name} ${s.unit ? `(${s.unit})` : ""}${s.required ? " *" : ""}`}
         >
-          <input
+          <RecentInput
+            label={s.name}
+            disabled={disabled}
+            options={recentAnalysisValues(c.product_id, s)}
             value={values[i] ?? ""}
-            onChange={(e) => {
+            onChange={(value) => {
               const next = [...values];
-              next[i] = e.target.value;
+              next[i] = value;
               setter(next);
             }}
             placeholder={
@@ -523,6 +531,7 @@ export function App() {
   function startNewCycle() {
     navigateTo("Ciclos e tanques");
     setNewCycle(true);
+    setCycleAttempted(false);
     setCycleForm({
       tank_id: 0,
       product_id: 0,
@@ -649,6 +658,8 @@ export function App() {
     );
 
   function openLoading(c?: Cycle) {
+    setLoadingAttempt(null);
+    ownResults.current = [];
     markOnboardingSeen();
     const chosen = c || activeCycles[0];
     setLoadingForm({
@@ -663,6 +674,8 @@ export function App() {
     setNotice("");
   }
   function openExisting(l: Loading) {
+    setLoadingAttempt(null);
+    ownResults.current = l.source === "own" ? [...l.values] : [];
     markOnboardingSeen();
     setView("Carregamentos");
     setNewCycle(false);
@@ -717,6 +730,77 @@ export function App() {
   const suggestions = (field: keyof Loading) => [
     ...new Set(loadings.map((l) => String(l[field] || "")).filter(Boolean)),
   ];
+
+  function recentAnalysisValues(productId: number, spec: Spec) {
+    const fromCycle = (c: Cycle | undefined, values: string[]) => {
+      if (!c || c.product_id !== productId) return [];
+      const i = c.specifications.findIndex(s => s.name === spec.name && s.unit === spec.unit);
+      return i >= 0 && values[i]?.trim() ? [values[i]] : [];
+    };
+    return [...new Set([
+      ...loadings.flatMap(l => fromCycle(cycleFor(l), l.values)),
+      ...cycles.flatMap(c => fromCycle(c, c.reference_values)),
+    ])];
+  }
+  const validDate = (value: string) => !!value && Number.isFinite(Date.parse(value));
+  const loadingAnalysis = selectedFormCycle
+    ? inspectAnalyses(selectedFormCycle.specifications, loadingForm.values, loadingAttempt !== "draft")
+    : { errors: [] as string[], exception: false };
+  const loadingErrors = [
+    ...(!selectedFormCycle ? ["Selecione um ciclo."] : []),
+    ...(!validDate(loadingForm.loaded_at) ? ["Informe a data e hora do carregamento."] : []),
+    ...(loadingForm.plate.trim().length < 7 ? ["Informe uma placa válida (mínimo de 7 caracteres)."] : []),
+    ...(["trailer", "carrier", "destination", "analyst"] as const).flatMap(key =>
+      !loadingForm[key].trim() ? [{ trailer: "Selecione a carreta.", carrier: "Informe a transportadora.", destination: "Selecione a unidade.", analyst: "Informe o responsável pela análise." }[key]] : []),
+    ...loadingAnalysis.errors,
+  ];
+  const cycleErrors = [
+    ...(!cycleForm.tank_id ? ["Selecione um tanque."] : []),
+    ...(!selectedCycleProduct ? ["Selecione um produto."] : []),
+    ...(!validDate(cycleForm.manufactured_at) ? ["Informe a data e hora de fabricação."] : []),
+    ...(!cycleForm.lots.trim() ? ["Informe os lotes."] : []),
+    ...(!cycleForm.analyst.trim() ? ["Informe o responsável pela análise."] : []),
+    ...(selectedCycleProduct ? inspectAnalyses(selectedCycleProduct.specifications, cycleForm.reference_values).errors : []),
+  ];
+  const needsFormApproval = current && !hasUnsavedLoadingChanges
+    ? needs(current).reuse || needs(current).exception
+    : loadingForm.source === "ref" || loadingAnalysis.exception;
+  function submitCycle() {
+    setCycleAttempted(true);
+    if (cycleErrors.length) { setNotice("Revise os campos indicados no cadastro do ciclo."); return; }
+    run(() => db.rpc("pilot_create_cycle", {
+      p_tank_id: cycleForm.tank_id, p_product_id: cycleForm.product_id,
+      p_manufactured_at: localDateTimeToIso(cycleForm.manufactured_at),
+      p_lots: cycleForm.lots.trim(), p_reference: cycleForm.reference_values,
+      p_analyst: cycleForm.analyst.trim(),
+    }), "Ciclo criado.", () => { setNewCycle(false); setCycleAttempted(false); });
+  }
+  function submitLoading(action: "draft" | "request" | "issue") {
+    setLoadingAttempt(action);
+    const errors = [
+      ...loadingErrors.filter(error => !loadingAnalysis.errors.includes(error)),
+      ...(selectedFormCycle ? inspectAnalyses(selectedFormCycle.specifications, loadingForm.values, action !== "draft").errors : []),
+    ];
+    if (errors.length) { setNotice("Revise os campos indicados no carregamento."); return; }
+    const form = { ...loadingForm, plate: loadingForm.plate.trim().toUpperCase(),
+      trailer: loadingForm.trailer.trim(), carrier: loadingForm.carrier.trim(),
+      destination: loadingForm.destination.trim(), analyst: loadingForm.analyst.trim(),
+      values: loadingForm.source === "ref" ? [...selectedFormCycle!.reference_values] : [...loadingForm.values],
+    };
+    const message = action === "draft" ? "Rascunho salvo." : action === "request"
+      ? "Solicitação enviada. O responsável já pode avaliar." : "Laudo emitido.";
+    const unchanged = !!current && !hasUnsavedLoadingChanges && action !== "draft";
+    run(() => unchanged
+      ? db.rpc(action === "request" ? "pilot_request_approval" : "pilot_issue", { p_id: current!.id })
+      : db.rpc("pilot_submit_loading", {
+          p_loading: { ...form, loaded_at: localDateTimeToIso(form.loaded_at) },
+          p_action: action, p_id: newLoading ? null : current!.id,
+        }), message, data => {
+      const id = unchanged ? current!.id : Number(data);
+      setSelected(id); setNewLoading(false); setLoadingAttempt(null); setLoadingForm(form);
+    });
+  }
+
   const analysisSuggestions = [
     ...new Set(
       products.flatMap((product) =>
@@ -930,6 +1014,7 @@ export function App() {
             <div className="two-col">
               <section className="card">
                 <h2>Identificação e análise</h2>
+                {loadingAttempt && <ValidationNotice errors={loadingErrors} />}
                 <div className="form-grid">
                   <Field label="Ciclo">
                     <select
@@ -939,10 +1024,11 @@ export function App() {
                         const c = cycles.find(
                           (x) => x.id === Number(e.target.value),
                         );
+                        ownResults.current = [];
                         setLoadingForm((f) => ({
                           ...f,
                           cycle_id: c?.id || 0,
-                          values: c?.specifications.map(() => "") || [],
+                          values: f.source === "ref" ? [...(c?.reference_values || [])] : c?.specifications.map(() => "") || [],
                         }));
                       }}
                     >
@@ -968,73 +1054,36 @@ export function App() {
                       }
                     />
                   </Field>
-                  <Field label="Placa">
-                    <input
-                      list="plates"
-                      disabled={!newLoading && !editLoading}
-                      placeholder="Digite a placa"
-                      value={loadingForm.plate}
-                      onChange={(e) =>
-                        setLoadingForm((f) => ({
-                          ...f,
-                          plate: e.target.value.toUpperCase(),
-                        }))
-                      }
-                    />
+                  <Field label="Placa *">
+                    <RecentInput label="Placa" disabled={!newLoading && !editLoading}
+                      value={loadingForm.plate} options={suggestions("plate")} placeholder="Digite a placa"
+                      onChange={plate => setLoadingForm(f => ({ ...f, plate: plate.toUpperCase() }))} />
                   </Field>
-                  <Field label="Carreta">
-                    <input
-                      disabled={!newLoading && !editLoading}
-                      value={loadingForm.trailer}
-                      onChange={(e) =>
-                        setLoadingForm((f) => ({
-                          ...f,
-                          trailer: e.target.value,
-                        }))
-                      }
-                    />
+                  <Field label="Carreta *">
+                    <select disabled={!newLoading && !editLoading} value={loadingForm.trailer}
+                      onChange={e => setLoadingForm(f => ({ ...f, trailer: e.target.value }))}>
+                      {[...new Set(["Única", "1ª carreta", "2ª carreta", ...suggestions("trailer"), loadingForm.trailer])].filter(Boolean)
+                        .map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
                   </Field>
-                  <Field label="Transportadora">
-                    <input
-                      list="carriers"
-                      disabled={!newLoading && !editLoading}
-                      placeholder="Digite para buscar ou cadastrar"
-                      value={loadingForm.carrier}
-                      onChange={(e) =>
-                        setLoadingForm((f) => ({
-                          ...f,
-                          carrier: e.target.value,
-                        }))
-                      }
-                    />
+                  <Field label="Transportadora *">
+                    <RecentInput label="Transportadora" disabled={!newLoading && !editLoading}
+                      value={loadingForm.carrier} options={suggestions("carrier")} placeholder="Digite a transportadora"
+                      onChange={carrier => setLoadingForm(f => ({ ...f, carrier }))} />
                   </Field>
-                  <Field label="Destino">
-                    <input
-                      list="destinations"
-                      disabled={!newLoading && !editLoading}
-                      placeholder="Unidade ou cliente"
-                      value={loadingForm.destination}
-                      onChange={(e) =>
-                        setLoadingForm((f) => ({
-                          ...f,
-                          destination: e.target.value,
-                        }))
-                      }
-                    />
+                  <Field label="Unidade / destino *">
+                    <select disabled={!newLoading && !editLoading} value={loadingForm.destination}
+                      onChange={e => setLoadingForm(f => ({ ...f, destination: e.target.value }))}>
+                      <option value="">Selecione a unidade</option>
+                      {loadingForm.destination && !consultationUnits.includes(loadingForm.destination) &&
+                        <option value={loadingForm.destination}>{loadingForm.destination}</option>}
+                      {consultationUnits.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
                   </Field>
-                  <Field label="Responsável pela análise">
-                    <input
-                      list="analysts"
-                      disabled={!newLoading && !editLoading}
-                      placeholder="Digite o nome"
-                      value={loadingForm.analyst}
-                      onChange={(e) =>
-                        setLoadingForm((f) => ({
-                          ...f,
-                          analyst: e.target.value,
-                        }))
-                      }
-                    />
+                  <Field label="Responsável pela análise *">
+                    <RecentInput label="Responsável pela análise" disabled={!newLoading && !editLoading}
+                      value={loadingForm.analyst} options={[...suggestions("analyst"), ...cycles.map(c => c.analyst)]}
+                      placeholder="Digite o nome" onChange={analyst => setLoadingForm(f => ({ ...f, analyst }))} />
                   </Field>
                   <Field label="Origem dos resultados">
                     <select
@@ -1042,13 +1091,14 @@ export function App() {
                       value={loadingForm.source}
                       onChange={(e) => {
                         const source = e.target.value as "own" | "ref";
+                        if (source === "ref") ownResults.current = [...loadingForm.values];
                         setLoadingForm((f) => ({
                           ...f,
                           source,
                           values:
                             source === "ref"
                               ? [...(selectedFormCycle?.reference_values || [])]
-                              : f.values,
+                              : selectedFormCycle?.specifications.map((_, i) => ownResults.current[i] ?? "") || [],
                         }));
                       }}
                     >
@@ -1059,157 +1109,44 @@ export function App() {
                     </select>
                   </Field>
                 </div>
-                <datalist id="plates">
-                  {suggestions("plate").map((v) => (
-                    <option key={v} value={v} />
-                  ))}
-                </datalist>
-                <datalist id="carriers">
-                  {suggestions("carrier").map((v) => (
-                    <option key={v} value={v} />
-                  ))}
-                </datalist>
-                <datalist id="destinations">
-                  {suggestions("destination").map((v) => (
-                    <option key={v} value={v} />
-                  ))}
-                </datalist>
-                <datalist id="analysts">
-                  {[
-                    ...new Set([
-                      ...suggestions("analyst"),
-                      ...cycles.map((c) => c.analyst),
-                    ]),
-                  ].map((v) => (
-                    <option key={v} value={v} />
-                  ))}
-                </datalist>
                 {selectedFormCycle && (
                   <>
                     <h3>Resultados</h3>
+                    {loadingForm.source === "ref" && <p className="helper">Resultados do ciclo selecionado. O uso exige autorização e os valores são preservados.</p>}
                     {currentValues(selectedFormCycle, loadingForm.values, (v) =>
                       setLoadingForm((f) => ({ ...f, values: v })),
+                      loadingForm.source === "ref" || (!newLoading && !editLoading),
                     )}
                   </>
                 )}
                 <Field label="Observações">
-                  <textarea
-                    disabled={!newLoading && !editLoading}
-                    value={loadingForm.observation}
-                    onChange={(e) =>
-                      setLoadingForm((f) => ({
-                        ...f,
-                        observation: e.target.value,
-                      }))
-                    }
-                  />
+                  <RecentInput label="Observações" multiline disabled={!newLoading && !editLoading}
+                    value={loadingForm.observation} options={suggestions("observation")}
+                    onChange={observation => setLoadingForm(f => ({ ...f, observation }))} />
                 </Field>
               </section>
               <aside className="action-column">
                 <section className="card">
                   <h2>Próxima ação</h2>
-                  {hasUnsavedLoadingChanges && (
-                    <p className="helper" role="status">
-                      Salve as alterações antes de solicitar autorização ou emitir o laudo.
-                    </p>
-                  )}
-                  {current && (
-                    <p className="muted">
-                      {current.certificate_number
-                        ? `Laudo ${current.certificate_number}`
-                        : current.state}
-                    </p>
-                  )}
+                  {current && <p className="muted">{current.certificate_number ? `Laudo ${current.certificate_number}` : current.state}</p>}
                   {(newLoading || editLoading) && (
-                    <button
-                      className="primary"
-                      disabled={busy || !selectedFormCycle}
-                      onClick={() => {
-                        if (
-                          !loadingForm.loaded_at ||
-                          Number.isNaN(Date.parse(loadingForm.loaded_at))
-                        ) {
-                          setNotice("Informe uma data e hora válida.");
-                          return;
-                        }
-                        const payload = {
-                          p_cycle_id: loadingForm.cycle_id,
-                          p_plate: loadingForm.plate,
-                          p_trailer: loadingForm.trailer,
-                          p_carrier: loadingForm.carrier,
-                          p_destination: loadingForm.destination,
-                          p_analyst: loadingForm.analyst,
-                          p_loaded_at: localDateTimeToIso(
-                            loadingForm.loaded_at,
-                          ),
-                          p_values: loadingForm.values,
-                          p_source: loadingForm.source,
-                          p_observation: loadingForm.observation,
-                        };
-                        run(
-                          () =>
-                            db.rpc(
-                              newLoading
-                                ? "pilot_create_loading"
-                                : "pilot_save_loading",
-                              newLoading
-                                ? payload
-                                : {
-                                    ...payload,
-                                    p_id: current!.id,
-                                    p_cycle_id: undefined,
-                                  },
-                            ),
-                          "Rascunho salvo.",
-                          () => {
-                            setNewLoading(false);
-                            setSelected(null);
-                          },
-                        );
-                      }}
-                    >
-                      Salvar rascunho
-                    </button>
+                    <>
+                      <button disabled={busy} onClick={() => submitLoading("draft")}>Salvar rascunho</button>
+                      <button className="primary" disabled={busy}
+                        onClick={() => submitLoading(needsFormApproval ? "request" : "issue")}>
+                        {needsFormApproval ? "Solicitar autorização" : "Emitir laudo"}
+                      </button>
+                      <p className="helper">
+                        {needsFormApproval
+                          ? "Salva os dados e envia a solicitação de autorização."
+                          : "Salva os dados e emite o laudo após validar as análises."}
+                      </p>
+                      <p className="helper">O rascunho pode ser salvo com análises ainda não preenchidas.</p>
+                    </>
                   )}
-                  {current &&
-                    editLoading &&
-                    (needs(current).exception || needs(current).reuse) && (
-                      <button
-                        disabled={busy || hasUnsavedLoadingChanges}
-                        onClick={() =>
-                          run(
-                            () =>
-                              db.rpc("pilot_request_approval", {
-                                p_id: current.id,
-                              }),
-                            "Solicitação enviada. O responsável já pode avaliar.",
-                          )
-                        }
-                      >
-                        Solicitar autorização
-                      </button>
-                    )}
-                  {current &&
-                    internal &&
-                    (current.state === "Rascunho" ||
-                      current.state === "Aguardando autorização") && (
-                      <button
-                        className="primary"
-                        disabled={
-                          busy ||
-                          hasUnsavedLoadingChanges ||
-                          needs(current).exception ||
-                          needs(current).reuse
-                        }
-                        onClick={() =>
-                          run(
-                            () => db.rpc("pilot_issue", { p_id: current.id }),
-                            "Laudo emitido.",
-                          )
-                        }
-                      >
-                        Emitir laudo
-                      </button>
+                  {current && internal && current.state === "Aguardando autorização" &&
+                    !needs(current).exception && !needs(current).reuse && (
+                      <button className="primary" disabled={busy} onClick={() => submitLoading("issue")}>Emitir laudo</button>
                     )}
                   {current && current.state === "Aguardando autorização" && (
                     <p className="muted">
@@ -1721,6 +1658,7 @@ export function App() {
             {newCycle && (
               <section className="card">
                 <h2>Novo ciclo</h2>
+                {cycleAttempted && <ValidationNotice errors={cycleErrors} />}
                 <div className="form-grid">
                   <Field label="Tanque">
                     <select
@@ -1791,41 +1729,30 @@ export function App() {
                       }
                     />
                   </Field>
-                  <Field label="Lotes">
-                    <input
-                      value={cycleForm.lots}
-                      onChange={(e) =>
-                        setCycleForm((f) => ({ ...f, lots: e.target.value }))
-                      }
-                    />
+                  <Field label="Lotes *">
+                    <RecentInput label="Lotes" value={cycleForm.lots} options={cycles.map(c => c.lots)}
+                      onChange={lots => setCycleForm(f => ({ ...f, lots }))} />
                   </Field>
-                  <Field label="Responsável pela análise">
-                    <input
-                      list="cycle-analysts"
-                      value={cycleForm.analyst}
-                      onChange={(e) =>
-                        setCycleForm((f) => ({ ...f, analyst: e.target.value }))
-                      }
-                    />
-                    <datalist id="cycle-analysts">
-                      {[...new Set(cycles.map((c) => c.analyst))].map((v) => (
-                        <option key={v} value={v} />
-                      ))}
-                    </datalist>
+                  <Field label="Responsável pela análise *">
+                    <RecentInput label="Responsável pela análise" value={cycleForm.analyst}
+                      options={[...loadings.map(l => l.analyst), ...cycles.map(c => c.analyst)]}
+                      onChange={analyst => setCycleForm(f => ({ ...f, analyst }))} />
                   </Field>
                 </div>
                 {selectedCycleProduct && (
                   <>
                     <h3>Referência do tanque</h3>
                     {selectedCycleProduct.specifications.map((s, i) => (
-                      <Field key={i} label={`${s.name} ${s.unit}`}>
-                        <input
+                      <Field key={i} label={`${s.name} ${s.unit}${s.required !== false ? " *" : ""}`}>
+                        <RecentInput
+                          label={s.name}
+                          options={recentAnalysisValues(selectedCycleProduct.id, s)}
                           value={cycleForm.reference_values[i] || ""}
-                          onChange={(e) =>
+                          onChange={(value) =>
                             setCycleForm((f) => ({
                               ...f,
                               reference_values: f.reference_values.map(
-                                (v, j) => (j === i ? e.target.value : v),
+                                (v, j) => (j === i ? value : v),
                               ),
                             }))
                           }
@@ -1838,24 +1765,8 @@ export function App() {
                   <button onClick={() => setNewCycle(false)}>Cancelar</button>
                   <button
                     className="primary"
-                    disabled={busy || !selectedCycleProduct}
-                    onClick={() =>
-                      run(
-                        () =>
-                          db.rpc("pilot_create_cycle", {
-                            p_tank_id: cycleForm.tank_id,
-                            p_product_id: cycleForm.product_id,
-                            p_manufactured_at: localDateTimeToIso(
-                              cycleForm.manufactured_at,
-                            ),
-                            p_lots: cycleForm.lots,
-                            p_reference: cycleForm.reference_values,
-                            p_analyst: cycleForm.analyst,
-                          }),
-                        "Ciclo criado.",
-                        () => setNewCycle(false),
-                      )
-                    }
+                    disabled={busy}
+                    onClick={submitCycle}
                   >
                     Criar ciclo
                   </button>
