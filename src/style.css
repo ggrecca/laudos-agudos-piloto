@@ -1125,3 +1125,74 @@ hr {
   background: #fff2f1; border-color: #dbb1af;
 }
 .cycle-card-actions .cycle-action-note { flex-basis: 100%; font-size: 11px; color: #68776d; }
+
+/* Operational help opens over the current task, preserving unsaved form state. */
+.home-header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.sidebar nav button.help-nav { margin-top: 14px; }
+.help-dialog { width: min(1160px, calc(100vw - 48px)); height: min(900px, calc(100dvh - 48px)); max-width: none; max-height: none; padding: 0; border: 1px solid #d6e3da; border-radius: 15px; background: #fff; color: #263e31; box-shadow: 0 24px 90px #0b231b45; }
+.help-dialog[open] { display: flex; flex-direction: column; }
+.help-dialog::backdrop { background: #0b231bad; }
+.manual-header { display: flex; justify-content: space-between; gap: 22px; align-items: flex-start; padding: 22px 24px; border-bottom: 1px solid #e3ebe6; }
+.help-dialog .manual-header h1 { display: flex; align-items: center; gap: 10px; font-size: 26px; margin: 7px 0 5px; }
+.manual-header p { margin-bottom: 7px; font-size: 13px; color: #657b6e; }
+.manual-header small { font-size: 11px; color: #71847a; }
+.manual-toolbar { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; padding-top: 4px; }
+dialog.help-dialog .manual-toolbar .manual-tool-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #d5e2d9; background: white; border-radius: 8px; padding: 8px 10px; min-height: 36px; color: #285340; font-size: 12px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+dialog.help-dialog .manual-toolbar button.manual-tool-button { min-height: 36px; padding: 8px 10px; }
+dialog.help-dialog .manual-toolbar button.manual-close { min-height: 36px; width: 36px; height: 36px; padding: 0; }
+.manual-tool-button:focus-visible { outline: 3px solid #7bc89b; outline-offset: 2px; }
+.manual-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 0; flex: 1; }
+.manual-index { overflow: auto; padding: 20px 14px; background: #f4f8f5; border-right: 1px solid #e3ebe6; }
+.manual-search { display: block; padding: 0 6px; font-size: 12px; font-weight: 700; }
+.manual-search > span { display: flex; gap: 6px; align-items: center; }
+.manual-search input { width: 100%; min-width: 0; margin-top: 8px; font-size: 12px; padding: 9px; }
+.manual-results { margin: 13px 6px 8px; font-size: 11px; color: #71847a; }
+dialog.help-dialog .manual-index button.manual-topic { display: block; width: 100%; min-height: 0; height: auto; padding: 9px 10px; border: 0; background: transparent; text-align: left; line-height: 1.45; font-size: 12px; font-weight: 600; color: #335945; border-radius: 8px; }
+dialog.help-dialog .manual-index button.manual-topic:hover { background: #e3efe7; }
+.manual-content { overflow: auto; padding: 24px 28px; }
+.manual-section { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid #e6ede8; }
+.manual-section:last-child { border-bottom: 0; margin-bottom: 0; }
+.manual-section h2 { scroll-margin-top: 14px; margin-bottom: 8px; font-size: 20px; }
+.manual-section h2:focus-visible { outline: 3px solid #7bc89b; outline-offset: 4px; }
+.manual-summary { color: #71847a; font-size: 12px !important; margin-bottom: 18px; }
+.manual-content p, .manual-content li { font-size: 14px; line-height: 1.7; }
+.manual-content ol, .manual-content ul { padding-left: 22px; margin: 0 0 16px; }
+.manual-content li + li { margin-top: 8px; }
+.manual-note { background: #fff9ed; border-left: 3px solid #dec28a; border-radius: 0 7px 7px 0; padding: 12px 15px; margin: 16px 0; font-size: 13px; line-height: 1.65; color: #735d34; }
+.manual-table-wrap { overflow: auto; margin: 15px 0; }
+.manual-table-wrap table { table-layout: fixed; }
+.manual-table-wrap th:first-child { width: 32%; }
+.help-dialog .manual-table-wrap th, .help-dialog .manual-table-wrap td { white-space: normal; overflow-wrap: anywhere; vertical-align: top; font-size: 12px; padding: 9px 8px; }
+.manual-empty { margin-top: 0; color: #71847a; }
+@media (max-width: 900px) {
+ .help-dialog { width: calc(100vw - 24px); height: calc(100dvh - 24px); }
+ .manual-header { flex-direction: column; gap: 8px; padding: 16px; }
+ .manual-toolbar { justify-content: flex-start; }
+ .manual-layout { grid-template-columns: 210px minmax(0, 1fr); }
+ .manual-content { padding: 18px; }
+}
+@media (max-width: 620px) {
+ .manual-layout { display: block; overflow: auto; }
+ .manual-index { max-height: 210px; border-right: 0; border-bottom: 1px solid #e3ebe6; }
+ .manual-content { overflow: visible; }
+}
+@page manual { size: A4; margin: 16mm; }
+@media print {
+ body.manual-printing { background: white; }
+ body.manual-printing .shell { display: none !important; }
+ body.manual-printing dialog.help-dialog[open] { display: block !important; position: static !important; width: auto !important; height: auto !important; max-height: none; max-width: none; overflow: visible; margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; page: manual; }
+ .help-dialog::backdrop { display: none; }
+ .help-dialog .manual-header { display: block; padding: 0 0 5mm; }
+ .help-dialog .manual-header h1 { font-size: 22px; }
+ .help-dialog .manual-toolbar, .help-dialog .manual-index, .help-dialog .manual-empty { display: none !important; }
+ .help-dialog .manual-layout { display: block; height: auto; min-height: 0; overflow: visible; }
+ .help-dialog .manual-content { overflow: visible; height: auto; padding: 5mm 0 0; }
+ .help-dialog .manual-section, .help-dialog .manual-section[hidden] { display: block !important; margin-bottom: 5mm; padding-bottom: 4mm; }
+ .help-dialog .manual-section h2 { break-after: avoid; font-size: 17px; }
+ .help-dialog .manual-content p, .help-dialog .manual-content li { font-size: 11px; line-height: 1.5; }
+ .help-dialog .manual-note { font-size: 11px; break-inside: avoid; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+ .help-dialog .manual-table-wrap { overflow: visible; }
+ .help-dialog .manual-table-wrap th, .help-dialog .manual-table-wrap td { padding: 5px; font-size: 10px; }
+ .help-dialog tr, .help-dialog li { break-inside: avoid; }
+ .help-dialog thead { display: table-header-group; }
+}

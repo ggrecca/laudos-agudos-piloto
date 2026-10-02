@@ -1,5 +1,6 @@
 import { Children, cloneElement, isValidElement, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { RecentInput } from "./RecentInput";
+import { OperationalManual } from "./OperationalManual";
 import { can, roleLabel, type Role } from "./permissions";
 import { AuthorizationHistory, UsersManagement, ProductList, CycleHistory, CancellationButton, SpecificationHint, type Request, type ManagedUser, type Version } from "./Management";
 import { inspectAnalyses, loadingValidation, cycleValidation, approvalReasons, authorizationNeeds, effectiveLoadingState, errorMessage, type ValidationIssue } from "./flow";
@@ -7,6 +8,7 @@ import { Certificate, type CertificateTrace } from "./Certificate";
 import { createClient, type Session } from "@supabase/supabase-js";
 import {
   Home,
+  CircleHelp,
   Droplets,
   FileCheck2,
   FlaskConical,
@@ -265,6 +267,7 @@ export function App() {
   const [cycleToOpen, setCycleToOpen] = useState<number | null>(null);
   const [productEditingId, setProductEditingId] = useState<number | null>(null);
   const [view, setView] = useState<View>("Início");
+  const [manualOpen, setManualOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [noticeTone, setNoticeTone] = useState<"error" | "success" | "info">("info");
@@ -872,6 +875,7 @@ export function App() {
   ].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   return (
+    <>
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
@@ -914,6 +918,7 @@ export function App() {
                 </button>
               );
             })}
+          <button type="button" className="help-nav" aria-label="Ajuda" title="Manual operacional" onClick={() => setManualOpen(true)}><CircleHelp size={18} aria-hidden="true" /> Ajuda</button>
         </nav>
         <div className="account">
           <strong>{profile.name || session.user.email}</strong>
@@ -943,12 +948,10 @@ export function App() {
                   certificado de qualidade.
                 </p>
               </div>
-              <button
-                className="home-skip"
-                onClick={() => navigateTo("Carregamentos")}
-              >
-                Ir direto para carregamentos
-              </button>
+              <div className="home-header-actions">
+                <button type="button" aria-label="Ajuda" title="Manual operacional" onClick={() => setManualOpen(true)}><CircleHelp size={16} aria-hidden="true" /> Ajuda</button>
+                <button className="home-skip" onClick={() => navigateTo("Carregamentos")}>Ir direto para carregamentos</button>
+              </div>
             </div>
             <section
               className="flow-grid"
@@ -1032,19 +1035,13 @@ export function App() {
                 number="04"
                 count={`${issuedCount} emitido${issuedCount === 1 ? "" : "s"}`}
                 title="Emita e consulte o laudo"
-                description="Com o carregamento liberado, emita o certificado. Os documentos emitidos ficam em Laudos."
+                description="Emita o laudo dentro do carregamento, após validar as análises e concluir as autorizações necessárias. Depois, ele ficará disponível para consulta e impressão."
               >
                 <button
                   className="flow-link"
-                  onClick={() => navigateTo("Carregamentos")}
-                >
-                  Ver carregamentos
-                </button>
-                <button
-                  className="flow-secondary"
                   onClick={() => navigateTo("Laudos")}
                 >
-                  Consultar laudos emitidos
+                  <FileCheck2 size={16} aria-hidden="true" /> Ver laudos
                 </button>
               </FlowStep>
             </section>
@@ -2011,6 +2008,8 @@ export function App() {
         )}
       </main>
     </div>
+    <OperationalManual open={manualOpen} onClose={() => setManualOpen(false)} role={profile.role} destinations={destinations} />
+    </>
   );
 }
 function localTimeFrom(value: string) {

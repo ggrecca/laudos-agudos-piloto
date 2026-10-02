@@ -47,3 +47,7 @@ A suíte usa login real nos cinco perfis, RPCs, consultas diretas/RLS e Chromium
 As versões de bibliotecas de produção permanecem fixadas no lockfile. Playwright é instalado apenas no diretório temporário do runner e não entra no bundle da aplicação.
 
 No branch main, tests/production-smoke.cjs verifica também o login/cadastro público publicado, título oficial, console e larguras desktop, sem autenticar nem gravar dados em produção.
+
+## Manual operacional
+
+Ajuda está disponível no menu lateral e na tela inicial para todos os perfis ativos. A janela preserva o formulário em andamento e oferece busca por assunto, sumário, impressão/PDF e download em Markdown. O conteúdo operacional está em src/manual.ts; docs/manual-operacional.md é sua versão documental. Atualize ambas ao alterar um procedimento. A lista de unidades exibida na ajuda vem do mesmo cadastro carregado pelo formulário.
