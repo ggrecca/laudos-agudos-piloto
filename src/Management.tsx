@@ -32,15 +32,15 @@ export function CancellationButton({kind,id,requests,db,run,busy,disabled=false}
  </section></div>}</>;
 }
 export function AuthorizationHistory({requests,open,db,run,busy,canDecide}:{requests:Request[];open:(r:Request)=>void;db:SupabaseClient;run:Run;busy:boolean;canDecide:boolean}) {
- const [query,setQuery]=useState(""),[status,setStatus]=useState("all"),[kind,setKind]=useState("all"),[from,setFrom]=useState(""),[to,setTo]=useState("");
+ const [query,setQuery]=useState(""),[status,setStatus]=useState("treated"),[kind,setKind]=useState("all"),[from,setFrom]=useState(""),[to,setTo]=useState("");
  const [decision,setDecision]=useState<{r:Request;approve:boolean}|null>(null),[reason,setReason]=useState("");
- const filtered=requests.filter(r=>(status==="all"||r.decision===status)&&(kind==="all"||r.kind===kind)&&(!from||!!r.requested_at&&r.requested_at.slice(0,10)>=from)&&(!to||!!r.requested_at&&r.requested_at.slice(0,10)<=to)&&[r.requester_name,r.actor_name,r.reason,String(r.loading_id??r.cycle_id)].join(" ").toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")));
- const cancellations=filtered.filter(r=>r.decision==="pending"&&r.kind.startsWith("cancel_"));
+ const filtered=requests.filter(r=>(status==="all"||(status==="treated"?r.decision!=="pending":r.decision===status))&&(kind==="all"||r.kind===kind)&&(!from||!!r.requested_at&&r.requested_at.slice(0,10)>=from)&&(!to||!!r.requested_at&&r.requested_at.slice(0,10)<=to)&&[r.requester_name,r.actor_name,r.reason,String(r.loading_id??r.cycle_id)].join(" ").toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")));
+ const cancellations=requests.filter(r=>r.decision==="pending"&&r.kind.startsWith("cancel_"));
  return <>
  {cancellations.length>0 && <section className="card"><h2>Cancelamentos pendentes</h2>{cancellations.map(r=><div className="history-row" key={r.id}><div><strong>{kindLabel(r.kind)} · #{r.cycle_id??r.loading_id}</strong><p>{r.reason}</p><small>{r.requester_name||"Não registrado"} · {date(r.requested_at)}</small></div><div className="actions"><button onClick={()=>open(r)}>Abrir registro</button>{canDecide&&<><button disabled={busy} onClick={()=>{setDecision({r,approve:false});setReason("")}}>Rejeitar</button><button className="primary" disabled={busy} onClick={()=>{setDecision({r,approve:true});setReason("")}}>Autorizar</button></>}</div></div>)}</section>}
  <section className="card"><h2>Histórico de autorizações</h2><div className="filter-bar">
  <Field label="Buscar solicitante, autorizador ou registro"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Nome, motivo ou referência…"/></Field>
- <Field label="Decisão"><select value={status} onChange={e=>setStatus(e.target.value)}><option value="all">Todas</option>{["pending","approved","rejected","superseded"].map(d=><option key={d} value={d}>{decisionLabel(d as Request["decision"])}</option>)}</select></Field>
+ <Field label="Decisão"><select value={status} onChange={e=>setStatus(e.target.value)}><option value="treated">Concluídas</option><option value="all">Todas</option>{["pending","approved","rejected","superseded"].map(d=><option key={d} value={d}>{decisionLabel(d as Request["decision"])}</option>)}</select></Field>
  <Field label="Tipo"><select value={kind} onChange={e=>setKind(e.target.value)}><option value="all">Todos</option>{["reuse","exception","cancel_cycle","cancel_certificate"].map(k=><option key={k} value={k}>{kindLabel(k as Request["kind"])}</option>)}</select></Field>
  <Field label="De"><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></Field><Field label="Até"><input type="date" value={to} onChange={e=>setTo(e.target.value)}/></Field>
  </div><div className="table-wrap"><table><thead><tr><th>Solicitação / registro</th><th>Solicitante / motivo</th><th>Decisão</th><th>Responsável / justificativa</th><th>Datas</th></tr></thead><tbody>

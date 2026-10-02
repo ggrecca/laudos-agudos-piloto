@@ -146,6 +146,15 @@ const emptyLoading = (): Omit<
 const emptySpec = (): Spec => ({ name: "", unit: "", required: true });
 
 
+async function fetchAll<T>(page: (from:number,to:number)=>PromiseLike<{data:unknown[]|null;error:{message:string}|null}>) {
+ const rows:T[]=[];
+ for(let from=0;;from+=1000){
+  const result=await page(from,from+999);
+  if(result.error)return {data:rows,error:result.error};
+  rows.push(...(result.data||[]) as T[]);
+  if(!result.data||result.data.length<1000)return {data:rows,error:null};
+ }
+}
 function Field({ label, children, error, fieldKey }: { label: string; children: ReactNode; error?: string; fieldKey?: string }) {
   const errorId = useId();
   const controls = Children.map(children, child => {
@@ -336,18 +345,18 @@ export function App() {
       approvalsResult,
       pendingResult, destinationResult, requestsResult, usersResult, versionsResult,
     ] = await Promise.all([
-      db.from("pilot_products").select("*").order("name"),
-      db.from("pilot_tanks").select("*").order("code"),
-      db.from("pilot_cycles").select("*").order("id", { ascending: false }),
-      db.from("pilot_loadings").select("*").order("id", { ascending: false }),
-      db.from("pilot_approvals").select("*"),
+      fetchAll<Product>((from,to)=>db.from("pilot_products").select("*").order("name").range(from,to)),
+      fetchAll<Tank>((from,to)=>db.from("pilot_tanks").select("*").order("code").range(from,to)),
+      fetchAll<Cycle>((from,to)=>db.from("pilot_cycles").select("*").order("id", { ascending: false }).range(from,to)),
+      fetchAll<Loading>((from,to)=>db.from("pilot_loadings").select("*").order("id", { ascending: false }).range(from,to)),
+      fetchAll<Approval>((from,to)=>db.from("pilot_approvals").select("*").range(from,to)),
       canManage
-        ? db.rpc("pilot_list_pending_profiles")
+        ? fetchAll<PendingProfile>((from,to)=>db.rpc("pilot_list_pending_profiles").range(from,to))
         : Promise.resolve({ data: [], error: null }),
-      db.from("pilot_destinations").select("*").order("display_order"),
-      db.from("pilot_authorization_requests").select("*").order("id", { ascending:false }),
-      canManage ? db.rpc("pilot_list_users") : Promise.resolve({data:[],error:null}),
-      can(nextPermissions,"products.manage") ? db.from("pilot_product_versions").select("*") : Promise.resolve({data:[],error:null}),
+      fetchAll<{id:string;name:string;active:boolean}>((from,to)=>db.from("pilot_destinations").select("*").order("display_order").range(from,to)),
+      fetchAll<Request>((from,to)=>db.from("pilot_authorization_requests").select("*").order("id", { ascending:false }).range(from,to)),
+      canManage ? fetchAll<ManagedUser>((from,to)=>db.rpc("pilot_list_users").range(from,to)) : Promise.resolve({data:[],error:null}),
+      can(nextPermissions,"products.manage") ? fetchAll<Version>((from,to)=>db.from("pilot_product_versions").select("*").range(from,to)) : Promise.resolve({data:[],error:null}),
     ]);
     for (const result of [
       productsResult,
@@ -386,7 +395,7 @@ export function App() {
       setView("Início");
     }
   }, [session?.user.id, profile?.status]);
-  const hasAwaitingLoadings = loadings.some(l => l.state === "Aguardando autorização");
+  const hasAwaitingLoadings = loadings.some(l => l.state === "Aguardando autorização") || requests.some(r=>r.decision==="pending");
   useEffect(() => {
     if (!session?.user.id || profile?.status !== "Ativo") return;
     const update = () => {
@@ -1291,7 +1300,7 @@ export function App() {
             <div className="heading">
               <div>
                 <h1>Autorizações</h1>
-                <p>Solicitações que exigem decisão antes da emissão.</p>
+                <p>Pendências para decisão e histórico permanente de autorizações.</p>
               </div>
             </div>
             <section className="card">
