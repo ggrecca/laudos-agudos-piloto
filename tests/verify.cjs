@@ -233,7 +233,7 @@ let browser,lastPage;
  await nav("Autorizações");await page.getByRole("heading",{name:"Histórico de autorizações",exact:true}).waitFor();
  await page.screenshot({path:"test-results/authorizations-1440.png",fullPage:true});
  record("Navegador: duplicidade direciona ao produto, autocomplete, edição gera versão, usuários e histórico");
- await page.getByRole("button",{name:"Sair",exact:true}).click();await login("consulta");await nav("Laudos");
+ await page.getByRole("button",{name:"Sair",exact:true}).click();await page.getByLabel("E-mail",{exact:true}).waitFor();await login("consulta");await nav("Laudos");
  const cancelledRow=page.locator("tbody tr").filter({hasText:number});
  await cancelledRow.click();await page.locator(".cancelled-banner").waitFor();await page.screenshot({path:"test-results/cancelled-certificate-1440.png",fullPage:true});
  assert.equal(await page.locator(".sidebar nav").getByRole("button",{name:"Usuários",exact:true}).count(),0);
