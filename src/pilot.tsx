@@ -950,7 +950,6 @@ export function App() {
               </div>
               <div className="home-header-actions">
                 <button type="button" aria-label="Ajuda" title="Manual operacional" onClick={() => setManualOpen(true)}><CircleHelp size={16} aria-hidden="true" /> Ajuda</button>
-                <button className="home-skip" onClick={() => navigateTo("Carregamentos")}>Ir direto para carregamentos</button>
               </div>
             </div>
             <section
