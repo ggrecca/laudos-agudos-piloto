@@ -415,7 +415,7 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     setCertificateTrace(null); setCertificateTraceError("");
-    if (!issuedLoading) return;
+    if (!session?.user.id || !issuedLoading) return;
     db.rpc("pilot_certificate_details", { p_id: issuedLoading.id }).then(({ data, error }) => {
       if (cancelled) return;
       if (error) { setCertificateTraceError(errorMessage(error)); return; }
