@@ -149,7 +149,7 @@ let browser,lastPage;
  browser=await chromium.launch({headless:true});
  const context=await browser.newContext({viewport:{width:1440,height:1000}});
  const page=await context.newPage();lastPage=page;page.setDefaultTimeout(15000);
- const consoleErrors=[];page.on("pageerror",e=>consoleErrors.push(e.message));page.on("console",m=>{if(m.type()==="error")consoleErrors.push(m.text())});
+ const consoleErrors=[];page.on("response",r=>{if(r.status()>=400){const u=new URL(r.url());console.log("HTTP_FAILURE",r.status(),r.request().method(),u.pathname)}});page.on("pageerror",e=>consoleErrors.push(e.message));page.on("console",m=>{if(m.type()==="error")consoleErrors.push(m.text()+" @ "+m.location().url)});
  async function nav(name){await page.locator(".sidebar nav").getByRole("button",{name,exact:true}).click();}
  async function login(name){await page.goto("http://127.0.0.1:5173");await page.getByLabel("E-mail",{exact:true}).fill(users[name].email);await page.getByLabel("Senha",{exact:true}).fill(password);await page.getByRole("button",{name:"Entrar",exact:true}).click();await page.locator(".sidebar").waitFor();}
  await login("operador");
