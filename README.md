@@ -45,3 +45,5 @@ O workflow `.github/workflows/verify.yml` executa build estrito, cria um Supabas
 A suíte usa login real nos cinco perfis, RPCs, consultas diretas/RLS e Chromium com a aplicação Vite. As capturas e resultados ficam no artefato `verification-evidence`. Dados e credenciais sintéticos dos testes existem somente no runner descartável. O script recusa qualquer URL de banco hospedado.
 
 As versões de bibliotecas de produção permanecem fixadas no lockfile. Playwright é instalado apenas no diretório temporário do runner e não entra no bundle da aplicação.
+
+No branch main, tests/production-smoke.cjs verifica também o login/cadastro público publicado, título oficial, console e larguras desktop, sem autenticar nem gravar dados em produção.
