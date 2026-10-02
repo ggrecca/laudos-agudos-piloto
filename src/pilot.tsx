@@ -1,5 +1,7 @@
 import { Children, cloneElement, isValidElement, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { RecentInput } from "./RecentInput";
+import { can, roleLabel, type Role } from "./permissions";
+import { AuthorizationHistory, UsersManagement, ProductList, CycleHistory, CancellationButton, SpecificationHint, type Request, type ManagedUser, type Version } from "./Management";
 import { inspectAnalyses, loadingValidation, cycleValidation, approvalReasons, authorizationNeeds, effectiveLoadingState, errorMessage, type ValidationIssue } from "./flow";
 import { Certificate, type CertificateTrace } from "./Certificate";
 import { createClient, type Session } from "@supabase/supabase-js";
@@ -21,12 +23,6 @@ import {
 const url = import.meta.env.VITE_SUPABASE_URL as string;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 const db = createClient(url || "https://missing.supabase.co", key || "missing");
-type Role =
-  | "Operador A"
-  | "Operador Técnico"
-  | "Supervisor"
-  | "Administrador"
-  | "Consulta";
 type ProfileStatus = "Pendente" | "Ativo" | "Rejeitado" | "Bloqueado";
 type Profile = {
   id: string;
@@ -74,6 +70,11 @@ export type Cycle = {
   reference_values: string[];
   analyst: string;
   active: boolean;
+  status: "Ativo" | "Encerrado" | "Cancelado";
+  product_snapshot: {code:string;name:string;family:string;specifications:Spec[];version:number} | null;
+  snapshot_provenance: string;
+  created_at: string;
+  closed_at: string | null;
 };
 export type Loading = {
   id: number;
@@ -82,6 +83,7 @@ export type Loading = {
   trailer: string;
   carrier: string;
   destination: string;
+  destination_id?: string | null;
   analyst: string;
   loaded_at: string;
   values: string[];
@@ -105,12 +107,12 @@ type View =
   | "Carregamentos"
   | "Autorizações"
   | "Laudos"
-  | "Ciclos e tanques"
+  | "Ciclos de tanque"
   | "Cadastros"
   | "Usuários";
 const views: { name: View; icon: typeof Truck }[] = [
   { name: "Início", icon: Home },
-  { name: "Ciclos e tanques", icon: Droplets },
+  { name: "Ciclos de tanque", icon: Droplets },
   { name: "Carregamentos", icon: Truck },
   { name: "Autorizações", icon: ShieldCheck },
   { name: "Laudos", icon: FileCheck2 },
@@ -142,12 +144,7 @@ const emptyLoading = (): Omit<
   observation: "",
 });
 const emptySpec = (): Spec => ({ name: "", unit: "", required: true });
-const consultationUnits = [
-  "Agudos/SP",
-  "Itapetininga/SP",
-  "Uberaba/MG",
-  "Taquari/RS",
-];
+
 
 function Field({ label, children, error, fieldKey }: { label: string; children: ReactNode; error?: string; fieldKey?: string }) {
   const errorId = useId();
@@ -170,7 +167,7 @@ function Pill({ state }: { state: string }) {
           ? "green"
           : state === "Aguardando autorização"
             ? "amber"
-            : state === "Em correção"
+            : (state === "Em correção" || state === "Cancelado")
               ? "red"
               : "")
       }
@@ -251,6 +248,13 @@ export function App() {
   const [loadings, setLoadings] = useState<Loading[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingProfile[]>([]);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [destinations, setDestinations] = useState<{id:string;name:string;active:boolean}[]>([]);
+  const [requests, setRequests] = useState<Request[]>([]);
+  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [versions, setVersions] = useState<Version[]>([]);
+  const [cycleToOpen, setCycleToOpen] = useState<number | null>(null);
+  const [productEditingId, setProductEditingId] = useState<number | null>(null);
   const [view, setView] = useState<View>("Início");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -295,14 +299,6 @@ export function App() {
   const [fullName, setFullName] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-  const [userDecision, setUserDecision] = useState<{
-    user: PendingProfile;
-    approve: boolean;
-  } | null>(null);
-  const [userRole, setUserRole] =
-    useState<Exclude<Role, "Administrador">>("Consulta");
-  const [userDestination, setUserDestination] = useState("");
-  const [userReason, setUserReason] = useState("");
 
   useEffect(() => {
     db.auth.getSession().then(({ data }) => setSession(data.session));
@@ -328,15 +324,17 @@ export function App() {
       setPendingUsers([]);
       return;
     }
-    const canManage =
-      nextProfile.role === "Supervisor" || nextProfile.role === "Administrador";
+    const permissionResult = await db.rpc("pilot_permissions");
+    if (permissionResult.error) throw permissionResult.error;
+    const nextPermissions = (permissionResult.data || []) as string[];
+    const canManage = can(nextPermissions, "users.manage");
     const [
       productsResult,
       tanksResult,
       cyclesResult,
       loadingsResult,
       approvalsResult,
-      pendingResult,
+      pendingResult, destinationResult, requestsResult, usersResult, versionsResult,
     ] = await Promise.all([
       db.from("pilot_products").select("*").order("name"),
       db.from("pilot_tanks").select("*").order("code"),
@@ -346,6 +344,10 @@ export function App() {
       canManage
         ? db.rpc("pilot_list_pending_profiles")
         : Promise.resolve({ data: [], error: null }),
+      db.from("pilot_destinations").select("*").order("display_order"),
+      db.from("pilot_authorization_requests").select("*").order("id", { ascending:false }),
+      canManage ? db.rpc("pilot_list_users") : Promise.resolve({data:[],error:null}),
+      can(nextPermissions,"products.manage") ? db.from("pilot_product_versions").select("*") : Promise.resolve({data:[],error:null}),
     ]);
     for (const result of [
       productsResult,
@@ -353,11 +355,16 @@ export function App() {
       cyclesResult,
       loadingsResult,
       approvalsResult,
-      pendingResult,
+      pendingResult, destinationResult, requestsResult, usersResult, versionsResult,
     ])
       if (result.error) throw result.error;
     if (request !== refreshRequest.current) return;
     setProfile(nextProfile);
+    setPermissions(nextPermissions);
+    setDestinations(destinationResult.data || []);
+    setRequests((requestsResult.data || []) as Request[]);
+    setUsers((usersResult.data || []) as ManagedUser[]);
+    setVersions((versionsResult.data || []) as Version[]);
     setProducts((productsResult.data || []) as Product[]);
     setTanks((tanksResult.data || []) as Tank[]);
     setCycles((cyclesResult.data || []) as Cycle[]);
@@ -395,7 +402,7 @@ export function App() {
       if (interval !== undefined) window.clearInterval(interval);
     };
   }, [session?.user.id, profile?.status, hasAwaitingLoadings]);
-  const issuedLoading = loadings.find(l => l.id === selected && l.state === "Emitido");
+  const issuedLoading = loadings.find(l => l.id === selected && !!l.certificate_number);
   useEffect(() => {
     let cancelled = false;
     setCertificateTrace(null); setCertificateTraceError("");
@@ -406,7 +413,7 @@ export function App() {
       setCertificateTrace(data as CertificateTrace);
     }, error => { if (!cancelled) setCertificateTraceError(errorMessage(error)); });
     return () => { cancelled = true; };
-  }, [issuedLoading?.id, issuedLoading?.edit_version, issuedLoading?.issued_at, session?.user.id, traceRetry]);
+  }, [issuedLoading?.id, issuedLoading?.edit_version, issuedLoading?.issued_at, issuedLoading?.state, session?.user.id, traceRetry]);
 
   async function run(
     task: () => PromiseLike<{ error: { message: string } | null; data?: unknown }>,
@@ -469,15 +476,10 @@ export function App() {
       setBusy(false);
     }
   }
-  const internal = !!profile && profile.active && profile.role !== "Consulta";
-  const canManageUsers =
-    profile?.role === "Supervisor" || profile?.role === "Administrador";
-  const canApproveReuse =
-    profile?.role === "Operador Técnico" ||
-    profile?.role === "Supervisor" ||
-    profile?.role === "Administrador";
-  const canApproveException =
-    profile?.role === "Supervisor" || profile?.role === "Administrador";
+  const internal = can(permissions,"loadings.create");
+  const canManageUsers = can(permissions,"users.manage");
+  const canApproveReuse = can(permissions,"authorizations.reuse");
+  const canApproveException = can(permissions,"authorizations.exception");
   const activeCycles = cycles.filter((c) => c.active);
   const hasActiveProductTankPair = tanks.some(
     (tank) =>
@@ -496,11 +498,13 @@ export function App() {
           (product) => product.active && product.family === tank.family,
         ),
     );
-  const ongoingCount = loadings.filter((l) => l.state !== "Emitido").length;
+  const ongoingCount = loadings.filter((l) => !["Emitido","Cancelado"].includes(l.state)).length;
   const issuedCount = loadings.filter((l) => l.state === "Emitido").length;
   const cycleFor = (l: Loading) => cycles.find((c) => c.id === l.cycle_id);
-  const productFor = (c?: Cycle) =>
-    products.find((p) => p.id === c?.product_id);
+  const productFor = (c?: Cycle) => {
+    const product = products.find(p=>p.id===c?.product_id);
+    return product && c?.product_snapshot ? {...product,...c.product_snapshot,version:c.specification_version} : product;
+  };
   const tankFor = (c?: Cycle) => tanks.find((t) => t.id === c?.tank_id);
   const current = loadings.find((l) => l.id === selected);
   const currentCycle = current && cycleFor(current);
@@ -548,17 +552,9 @@ export function App() {
               next[i] = value;
               setter(next);
             }}
-            placeholder={
-              s.qual?.join(" / ") ||
-              [
-                s.min !== undefined ? `mín ${s.min}` : "",
-                s.max !== undefined ? `máx ${s.max}` : "",
-              ]
-                .filter(Boolean)
-                .join(" · ") ||
-              "Resultado"
-            }
+            placeholder="Resultado"
           />
+          <SpecificationHint spec={s}/>
         </Field>
       ))}
     </div>
@@ -579,13 +575,14 @@ export function App() {
     if (showLoading && !confirmLeaveLoading()) return;
     if (nextView !== "Início") markOnboardingSeen();
     setView(nextView);
+    setCycleToOpen(null);
     setSelected(null);
     setNewLoading(false);
     setNewCycle(false);
     setNotice("");
   }
   function startNewCycle() {
-    navigateTo("Ciclos e tanques");
+    navigateTo("Ciclos de tanque");
     setNewCycle(true);
     setCycleAttempted(false);
     setCycleForm({
@@ -689,7 +686,7 @@ export function App() {
           <ErrorNotice text={notice} />
           <small>
             {authMode === "login"
-              ? "Perfis e permissões são definidos pelo responsável pelo piloto."
+              ? "Perfis e permissões são definidos pelo responsável pelo Laudos Agudos."
               : "Após confirmar o e-mail, seu cadastro ficará pendente até a aprovação."}
           </small>
         </section>
@@ -705,7 +702,7 @@ export function App() {
         </h1>
         <p>
           {profile?.status === "Rejeitado"
-            ? "Sua solicitação não foi aprovada. Entre em contato com o responsável pelo piloto."
+            ? "Sua solicitação não foi aprovada. Entre em contato com o responsável pelo Laudos Agudos."
             : "Seu e-mail foi confirmado. Um Supervisor ou Administrador ainda precisa definir seu perfil de acesso."}
         </p>
         <button onClick={() => db.auth.signOut()}>Sair</button>
@@ -717,7 +714,7 @@ export function App() {
     setLoadingAttempt(null);
     ownResults.current = [];
     markOnboardingSeen();
-    const chosen = c || activeCycles[0];
+    const chosen = c || activeCycles.find(c=>products.find(p=>p.id===c.product_id)?.active);
     setLoadingForm({
       ...emptyLoading(),
       cycle_id: chosen?.id || 0,
@@ -740,7 +737,7 @@ export function App() {
       plate: l.plate,
       trailer: l.trailer,
       carrier: l.carrier,
-      destination: l.destination,
+      destination: l.destination_id || l.destination,
       analyst: l.analyst,
       loaded_at: localTimeFrom(l.loaded_at),
       values: [...l.values],
@@ -760,7 +757,7 @@ export function App() {
     (loadingForm.plate !== current.plate ||
       loadingForm.trailer !== current.trailer ||
       loadingForm.carrier !== current.carrier ||
-      loadingForm.destination !== current.destination ||
+      loadingForm.destination !== (current.destination_id || current.destination) ||
       loadingForm.analyst !== current.analyst ||
       loadingForm.loaded_at !== localTimeFrom(current.loaded_at) ||
       JSON.stringify(loadingForm.values) !== JSON.stringify(current.values) ||
@@ -824,7 +821,7 @@ export function App() {
       p_manufactured_at: localDateTimeToIso(cycleForm.manufactured_at),
       p_lots: cycleForm.lots.trim(), p_reference: cycleForm.reference_values,
       p_analyst: cycleForm.analyst.trim(),
-    }), "Ciclo criado.", () => { setNewCycle(false); setCycleAttempted(false); });
+    }), "Ciclo de tanque criado.", () => { setNewCycle(false); setCycleAttempted(false); });
   }
   function submitLoading(action: "draft" | "request" | "issue") {
     setLoadingAttempt(action);
@@ -882,7 +879,7 @@ export function App() {
           {views
             .filter(
               (v) =>
-                (v.name !== "Cadastros" || profile.role === "Administrador") &&
+                (v.name !== "Cadastros" || can(permissions,"products.manage")) &&
                 (v.name !== "Usuários" || canManageUsers),
             )
             .map((v) => {
@@ -907,7 +904,7 @@ export function App() {
         </nav>
         <div className="account">
           <strong>{profile.name || session.user.email}</strong>
-          <small>{profile.role}</small>
+          <small>{roleLabel(profile.role)}</small>
           <button onClick={() => db.auth.signOut()}>
             <LogOut size={16} /> Sair
           </button>
@@ -927,7 +924,7 @@ export function App() {
             <div className="heading home-heading">
               <div>
                 <span className="eyebrow">COMECE POR AQUI</span>
-                <h1>Do ciclo ao laudo</h1>
+                <h1>Do Ciclo de tanque ao laudo</h1>
                 <p>
                   Siga estas etapas para registrar uma análise e emitir o
                   certificado de qualidade.
@@ -946,20 +943,20 @@ export function App() {
             >
               <FlowStep
                 number="01"
-                count={`${activeCycles.length} ciclo${activeCycles.length === 1 ? "" : "s"} ativo${activeCycles.length === 1 ? "" : "s"}`}
-                title="Prepare o ciclo"
+                count={`${activeCycles.length} ${activeCycles.length === 1 ? "Ciclo de tanque ativo" : "Ciclos de tanque ativos"}`}
+                title="Prepare o Ciclo de tanque"
                 description="Selecione tanque e produto e informe fabricação, lotes e valores de referência."
                 note={
                   !activeCycles.length
-                    ? profile.role === "Administrador"
+                    ? can(permissions,"products.manage")
                       ? hasActiveProductTankPair
                         ? undefined
-                        : "Antes do primeiro ciclo, configure produtos e tanques em Cadastros."
-                      : "Sem ciclo ativo? Peça ao responsável para abrir um ciclo."
+                        : "Antes do primeiro Ciclo de tanque, configure produtos e tanques em Cadastros."
+                      : "Sem Ciclo de tanque ativo? Peça ao responsável para abrir um Ciclo de tanque."
                     : undefined
                 }
               >
-                {profile.role === "Administrador" &&
+                {can(permissions,"products.manage") &&
                 !hasActiveProductTankPair ? (
                   <button
                     className="flow-link"
@@ -973,10 +970,10 @@ export function App() {
                     onClick={() =>
                       canCreateCycle
                         ? startNewCycle()
-                        : navigateTo("Ciclos e tanques")
+                        : navigateTo("Ciclos de tanque")
                     }
                   >
-                    {canCreateCycle ? "Iniciar novo ciclo" : "Ver ciclos e tanques"}
+                    {canCreateCycle ? "Iniciar novo Ciclo de tanque" : "Ver Ciclos de tanque"}
                   </button>
                 )}
               </FlowStep>
@@ -987,7 +984,7 @@ export function App() {
                 description="Informe os dados do caminhão e os resultados das análises do produto."
                 note={
                   internal && !activeCycles.length
-                    ? "É necessário haver um ciclo ativo para registrar."
+                    ? "É necessário haver um Ciclo de tanque ativo para registrar."
                     : undefined
                 }
               >
@@ -1057,7 +1054,7 @@ export function App() {
                 <p>
                   {newLoading
                     ? "Informe os dados do caminhão e os resultados da análise."
-                    : `Ciclo ${current!.cycle_id} · ${productFor(currentCycle)?.name || ""}`}
+                    : `Ciclo de tanque ${current!.cycle_id} · ${productFor(currentCycle)?.name || ""}`}
                 </p>
               </div>
               {current && <Pill state={stateFor(current)} />}
@@ -1066,8 +1063,9 @@ export function App() {
               <section className="card">
                 <h2>Identificação e análise</h2>
                 {loadingAttempt && <ValidationNotice errors={loadingIssues.map(i => i.message)} focus={() => focusValidation(loadingIssues)} />}
+                {products.some(p=>p.id!==productEditingId && p.code.trim().toLowerCase()===productForm.code.trim().toLowerCase()) && <div className="validation-notice" role="alert"><p>Este código já pertence a um produto cadastrado.</p><button onClick={()=>{const existing=products.find(p=>p.code.trim().toLowerCase()===productForm.code.trim().toLowerCase());if(existing){setProductEditingId(existing.id);setProductForm({code:existing.code,name:existing.name,family:existing.family,specifications:existing.specifications.map(s=>({...s}))});}}}>Abrir / editar produto existente</button></div>}
                 <div className="form-grid">
-                  <Field fieldKey="cycle_id" error={loadingError("cycle_id")} label="Ciclo">
+                  <Field fieldKey="cycle_id" error={loadingError("cycle_id")} label="Ciclo de tanque">
                     <select
                       disabled={!newLoading}
                       value={loadingForm.cycle_id}
@@ -1086,7 +1084,7 @@ export function App() {
                       <option value={0}>Selecione</option>
                       {(newLoading ? activeCycles : cycles).map((c) => (
                         <option key={c.id} value={c.id}>
-                          {tankFor(c)?.code} · {productFor(c)?.name} · ciclo{" "}
+                          {tankFor(c)?.code} · {productFor(c)?.name} · Ciclo de tanque{" "}
                           {c.id}
                         </option>
                       ))}
@@ -1126,9 +1124,9 @@ export function App() {
                     <select disabled={!newLoading && !editLoading} value={loadingForm.destination}
                       onChange={e => setLoadingForm(f => ({ ...f, destination: e.target.value }))}>
                       <option value="">Selecione a unidade</option>
-                      {loadingForm.destination && !consultationUnits.includes(loadingForm.destination) &&
-                        <option value={loadingForm.destination}>{loadingForm.destination}</option>}
-                      {consultationUnits.map(v => <option key={v} value={v}>{v}</option>)}
+                      {loadingForm.destination && !destinations.some(d=>d.id===loadingForm.destination) &&
+                        <option value={loadingForm.destination}>{loadingForm.destination} · destino histórico</option>}
+                      {destinations.filter(d=>d.active).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
                     </select>
                   </Field>
                   <Field fieldKey="analyst" error={loadingError("analyst")} label="Responsável pela análise *">
@@ -1163,7 +1161,7 @@ export function App() {
                 {selectedFormCycle && (
                   <>
                     <h3>Resultados</h3>
-                    {loadingForm.source === "ref" && <p className="helper">Resultados do ciclo selecionado. O uso exige autorização e os valores são preservados.</p>}
+                    {loadingForm.source === "ref" && <p className="helper">Resultados do Ciclo de tanque selecionado. O uso exige autorização e os valores são preservados.</p>}
                     {currentValues(selectedFormCycle, loadingForm.values, (v) =>
                       setLoadingForm((f) => ({ ...f, values: v })),
                       loadingForm.source === "ref" || (!newLoading && !editLoading),
@@ -1212,6 +1210,7 @@ export function App() {
                       {stateFor(current) === "Autorizado para emissão" ? "Autorizações concedidas para esta versão. O laudo já pode ser emitido." : ""}
                     </p>
                   )}
+                  {current?.state === "Emitido" && can(permissions,"cancellations.request") && <CancellationButton kind="cancel_certificate" id={current.id} requests={requests} db={db} run={run} busy={busy}/>}
                   {current?.certificate_number && (
                     <button disabled={!canPrintCertificate} onClick={() => window.print()}>
                       Imprimir laudo
@@ -1226,7 +1225,7 @@ export function App() {
             </div>
             {current?.certificate_number && (
               <Certificate loading={current} cycle={currentCycle} product={productFor(currentCycle)} tank={tankFor(currentCycle)}
-                trace={traceForCurrent} traceError={certificateTraceError} retry={() => setTraceRetry(n => n + 1)} />
+                cancellation={requests.find(r=>r.loading_id===current.id&&r.kind==="cancel_certificate"&&r.decision==="approved")} trace={traceForCurrent} traceError={certificateTraceError} retry={() => setTraceRetry(n => n + 1)} />
             )}
           </>
         ) : view === "Carregamentos" ? (
@@ -1249,7 +1248,7 @@ export function App() {
             <div className="metrics">
               <div>
                 <strong>
-                  {loadings.filter((l) => l.state !== "Emitido").length}
+                  {loadings.filter((l) => !["Emitido","Cancelado"].includes(l.state)).length}
                 </strong>
                 <span>Em andamento</span>
               </div>
@@ -1266,7 +1265,7 @@ export function App() {
             </div>
             {internal && !activeCycles.length && (
               <p className="empty">
-                Cadastre um produto, um tanque e um ciclo para iniciar.
+                Cadastre um produto, um tanque e um Ciclo de tanque para iniciar.
               </p>
             )}
             <section className="card">
@@ -1389,6 +1388,11 @@ export function App() {
                 </div>
               </section>
             ))}
+            <AuthorizationHistory requests={requests} db={db} run={run} busy={busy} canDecide={can(permissions,"cancellations.decide")}
+              open={r=>{
+                if(r.cycle_id){setCycleToOpen(r.cycle_id);setView("Ciclos de tanque");setSelected(null);}
+                else {const l=loadings.find(l=>l.id===r.loading_id);if(l)openExisting(l);}
+              }}/>
             {decision && (
               <div className="modal-backdrop">
                 <section className="modal">
@@ -1438,169 +1442,7 @@ export function App() {
             )}
           </>
         ) : view === "Usuários" ? (
-          <>
-            <div className="heading">
-              <div>
-                <h1>Usuários pendentes</h1>
-                <p>
-                  Analise as solicitações e atribua somente o perfil compatível
-                  com sua função.
-                </p>
-              </div>
-            </div>
-            <section className="card">
-              <div className="section-head">
-                <h2>Solicitações de acesso</h2>
-                <span className="muted">
-                  {pendingUsers.length} pendente{pendingUsers.length === 1 ? "" : "s"}
-                </span>
-              </div>
-              {pendingUsers.length === 0 ? (
-                <p className="empty">Nenhuma solicitação pendente.</p>
-              ) : (
-                <div className="user-list">
-                  {pendingUsers.map((user) => (
-                    <div className="user-row" key={user.id}>
-                      <div>
-                        <strong>{user.name || "Nome não informado"}</strong>
-                        <small>
-                          {user.email} · solicitado em {date(user.created_at)}
-                        </small>
-                      </div>
-                      <div className="actions">
-                        <button
-                          onClick={() => {
-                            setUserDecision({ user, approve: true });
-                            setUserRole("Consulta");
-                            setUserDestination(
-                              consultationUnits.includes(user.destination || "")
-                                ? user.destination!
-                                : "",
-                            );
-                            setUserReason("");
-                          }}
-                        >
-                          Avaliar
-                        </button>
-                        <button
-                          onClick={() => {
-                            setUserDecision({ user, approve: false });
-                            setUserRole("Consulta");
-                            setUserDestination("");
-                            setUserReason("");
-                          }}
-                        >
-                          Rejeitar
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-            {userDecision && (
-              <div className="modal-backdrop">
-                <section className="modal">
-                  <h2>
-                    {userDecision.approve
-                      ? "Aprovar acesso"
-                      : "Rejeitar solicitação"}
-                  </h2>
-                  <p>
-                    {userDecision.user.name || "Usuário"} · {userDecision.user.email}
-                  </p>
-                  {userDecision.approve ? (
-                    <>
-                      <Field label="Perfil">
-                        <select
-                          value={userRole}
-                          onChange={(e) =>
-                            setUserRole(
-                              e.target.value as Exclude<Role, "Administrador">,
-                            )
-                          }
-                        >
-                          <option value="Consulta">Consulta</option>
-                          <option value="Operador A">Operador A</option>
-                          <option value="Operador Técnico">Operador Técnico</option>
-                          {profile.role === "Administrador" && (
-                            <option value="Supervisor">Supervisor</option>
-                          )}
-                        </select>
-                      </Field>
-                      {userRole === "Consulta" && (
-                        <Field label="Unidade">
-                          <select
-                            required
-                            value={userDestination}
-                            onChange={(e) => setUserDestination(e.target.value)}
-                          >
-                            <option value="">Selecione a unidade</option>
-                            {consultationUnits.map((unit) => (
-                              <option key={unit} value={unit}>
-                                {unit}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                      )}
-                      <Field label="Observação (opcional)">
-                        <textarea
-                          value={userReason}
-                          onChange={(e) => setUserReason(e.target.value)}
-                          placeholder="Justificativa ou observação da decisão"
-                        />
-                      </Field>
-                    </>
-                  ) : (
-                    <Field label="Motivo da rejeição">
-                      <textarea
-                        autoFocus
-                        required
-                        minLength={3}
-                        value={userReason}
-                        onChange={(e) => setUserReason(e.target.value)}
-                      />
-                    </Field>
-                  )}
-                  <div className="actions">
-                    <button onClick={() => setUserDecision(null)}>Cancelar</button>
-                    <button
-                      className="primary"
-                      disabled={
-                        busy ||
-                        (userDecision.approve
-                          ? userRole === "Consulta" && !consultationUnits.includes(userDestination)
-                          : userReason.trim().length < 3)
-                      }
-                      onClick={() =>
-                        run(
-                          () =>
-                            db.rpc("pilot_decide_profile", {
-                              p_user_id: userDecision.user.id,
-                              p_approve: userDecision.approve,
-                              p_role: userDecision.approve ? userRole : null,
-                              p_destination: userDecision.approve
-                                ? userDestination
-                                : null,
-                              p_reason: userReason,
-                            }),
-                          userDecision.approve
-                            ? "Usuário aprovado."
-                            : "Solicitação rejeitada.",
-                          () => setUserDecision(null),
-                        )
-                      }
-                    >
-                      {userDecision.approve
-                        ? "Aprovar acesso"
-                        : "Rejeitar solicitação"}
-                    </button>
-                  </div>
-                </section>
-              </div>
-            )}
-          </>
+          <UsersManagement users={users} actorRole={profile.role} db={db} run={run} busy={busy}/>
         ) : view === "Laudos" ? (
           <>
             <div className="heading">
@@ -1623,7 +1465,7 @@ export function App() {
                 />
               </div>
               <LoadingTable
-                rows={filtered.filter((l) => l.state === "Emitido")}
+                rows={filtered.filter((l) => !!l.certificate_number)}
                 cycleFor={cycleFor}
                 productFor={productFor}
                 stateFor={stateFor}
@@ -1634,12 +1476,12 @@ export function App() {
               />
             </section>
           </>
-        ) : view === "Ciclos e tanques" ? (
+        ) : view === "Ciclos de tanque" ? (
           <>
             <div className="heading">
               <div>
-                <h1>Ciclos e tanques</h1>
-                <p>Acompanhe os ciclos ativos e a referência de cada tanque.</p>
+                <h1>Ciclos de tanque</h1>
+                <p>Acompanhe os Ciclos de tanque ativos e a referência de cada tanque.</p>
               </div>
               {internal && (
                 <button
@@ -1656,13 +1498,13 @@ export function App() {
                     });
                   }}
                 >
-                  <Plus size={18} /> Novo ciclo
+                  <Plus size={18} /> Novo Ciclo de tanque
                 </button>
               )}
             </div>
             {newCycle && (
               <section className="card">
-                <h2>Novo ciclo</h2>
+                <h2>Novo Ciclo de tanque</h2>
                 {cycleAttempted && <ValidationNotice errors={cycleIssues.map(i => i.message)} focus={() => focusValidation(cycleIssues)} />}
                 <div className="form-grid">
                   <Field fieldKey="tank_id" error={cycleError("tank_id")} label="Tanque">
@@ -1752,6 +1594,7 @@ export function App() {
                         <RecentInput
                           label={s.name}
                           options={recentAnalysisValues(selectedCycleProduct.id, s)}
+                          placeholder="Resultado"
                           value={cycleForm.reference_values[i] || ""}
                           onChange={(value) =>
                             setCycleForm((f) => ({
@@ -1762,6 +1605,7 @@ export function App() {
                             }))
                           }
                         />
+                        <SpecificationHint spec={s}/>
                       </Field>
                     ))}
                   </>
@@ -1773,53 +1617,15 @@ export function App() {
                     disabled={busy}
                     onClick={submitCycle}
                   >
-                    Criar ciclo
+                    Criar Ciclo de tanque
                   </button>
                 </div>
               </section>
             )}
-            <div className="card-grid">
-              {cycles.map((c) => (
-                <section className="card" key={c.id}>
-                  <div className="section-head">
-                    <h2>
-                      {tankFor(c)?.code} <small>· ciclo {c.id}</small>
-                    </h2>
-                    <Pill state={c.active ? "Ativo" : "Encerrado"} />
-                  </div>
-                  <strong>{productFor(c)?.name}</strong>
-                  <p className="muted">
-                    Lotes {c.lots} · fabricação {date(c.manufactured_at)}
-                  </p>
-                  <p className="muted">
-                    Especificação v{c.specification_version} · {c.analyst}
-                  </p>
-                  <div className="actions">
-                    {internal && c.active && (
-                      <button onClick={() => openLoading(c)}>
-                        Novo carregamento
-                      </button>
-                    )}
-                    {canApproveReuse && c.active && (
-                      <button
-                        onClick={() => {
-                          if (window.confirm(`Encerrar o ciclo ${c.id}?`))
-                            run(
-                              () => db.rpc("pilot_close_cycle", { p_id: c.id }),
-                              "Ciclo encerrado.",
-                            );
-                        }}
-                      >
-                        Encerrar ciclo
-                      </button>
-                    )}
-                  </div>
-                </section>
-              ))}
-            </div>
-            {!cycles.length && (
-              <p className="empty">Nenhum ciclo cadastrado.</p>
-            )}
+            <CycleHistory cycles={cycles} tanks={tanks} products={products} loadings={loadings} requests={requests}
+              db={db} run={run} busy={busy} initialId={cycleToOpen}
+              createLoading={openLoading} closeCycle={c=>{if(window.confirm(`Encerrar o Ciclo de tanque ${c.id}?`)) run(()=>db.rpc("pilot_close_cycle",{p_id:c.id}),"Ciclo de tanque encerrado.");}}
+              canCreate={internal} canClose={can(permissions,"cycles.close")} canCancel={can(permissions,"cancellations.request")}/>
           </>
         ) : (
           <>
@@ -1827,13 +1633,13 @@ export function App() {
               <div>
                 <h1>Cadastros</h1>
                 <p>
-                  Configure produtos e tanques antes de registrar ciclos reais.
+                  Configure produtos e tanques antes de registrar Ciclos de tanque.
                 </p>
               </div>
             </div>
             <div className="two-col">
               <section className="card">
-                <h2>Produto e especificação</h2>
+                <h2>{productEditingId ? "Editar produto · nova versão" : "Produto e especificação"}</h2>
                 <div className="form-grid">
                   <Field label="Código">
                     <input
@@ -1844,12 +1650,7 @@ export function App() {
                     />
                   </Field>
                   <Field label="Produto">
-                    <input
-                      value={productForm.name}
-                      onChange={(e) =>
-                        setProductForm((f) => ({ ...f, name: e.target.value }))
-                      }
-                    />
+                    <RecentInput label="Descrição do produto" value={productForm.name} options={products.map(p=>p.name)} onChange={name=>setProductForm(f=>({...f,name}))}/>
                   </Field>
                   <Field label="Família">
                     <select
@@ -1873,34 +1674,10 @@ export function App() {
                 </p>
                 {productForm.specifications.map((s, i) => (
                   <div className="spec-row" key={i}>
-                    <input
-                      list="analysis-names"
-                      aria-label="Nome da análise"
-                      autoComplete="off"
-                      placeholder="Nome da análise"
-                      value={s.name}
-                      onChange={(e) =>
-                        setProductForm((f) => ({
-                          ...f,
-                          specifications: f.specifications.map((x, j) =>
-                            j === i ? { ...x, name: e.target.value } : x,
-                          ),
-                        }))
-                      }
-                    />
-                    <input
-                      aria-label="Unidade"
-                      placeholder="Unidade"
-                      value={s.unit}
-                      onChange={(e) =>
-                        setProductForm((f) => ({
-                          ...f,
-                          specifications: f.specifications.map((x, j) =>
-                            j === i ? { ...x, unit: e.target.value } : x,
-                          ),
-                        }))
-                      }
-                    />
+                    <RecentInput label="Nome da análise" placeholder="Nome da análise" options={analysisSuggestions} value={s.name}
+                      onChange={name=>setProductForm(f=>({...f,specifications:f.specifications.map((x,j)=>j===i?{...x,name}:x)}))}/>
+                    <RecentInput label="Unidade" placeholder="Unidade" options={products.flatMap(p=>p.specifications.map(s=>s.unit))} value={s.unit}
+                      onChange={unit=>setProductForm(f=>({...f,specifications:f.specifications.map((x,j)=>j===i?{...x,unit}:x)}))}/>
                     <input
                       aria-label="Mínimo"
                       placeholder="Mínimo"
@@ -2009,39 +1786,34 @@ export function App() {
                             p_name: productForm.name,
                             p_family: productForm.family,
                             p_specs: productForm.specifications,
+                            p_id: productEditingId,
                           }),
                         "Produto salvo.",
-                        () =>
+                        () => {
+                          setProductEditingId(null);
                           setProductForm({
                             code: "",
                             name: "",
                             family: "Resina",
                             specifications: [emptySpec()],
-                          }),
+                          });
+                        },
                       )
                     }
                   >
-                    Salvar produto
+                    {productEditingId ? "Salvar nova versão" : "Salvar produto"}
                   </button>
                 </div>
                 <hr />
-                {products.map((p) => (
-                  <div className="list-row" key={p.id}>
-                    <strong>
-                      {p.code} · {p.name}
-                    </strong>
-                    <small>
-                      {p.family} · v{p.version} · {p.specifications.length}{" "}
-                      análises
-                    </small>
-                  </div>
-                ))}
+                <ProductList products={products} versions={versions} busy={busy}
+                  edit={p=>{setProductEditingId(p.id);setProductForm({code:p.code,name:p.name,family:p.family,specifications:p.specifications.map(s=>({...s}))});window.scrollTo({top:0,behavior:"smooth"});}}
+                  inactivate={p=>{if(window.confirm(`Inativar ${p.code} · ${p.name}? O histórico será preservado e o produto deixará de aceitar novos registros.`))run(()=>db.rpc("pilot_set_product_active",{p_id:p.id,p_active:false}),"Produto inativado; histórico preservado.");}}/>
               </section>
               <section className="card tank-management">
                 <div className="tank-header">
                   <div>
                     <h2>Tanques</h2>
-                    <p>Gerencie os cadastros usados para abrir ciclos de produção.</p>
+                    <p>Gerencie os cadastros usados para abrir Ciclos de tanque.</p>
                   </div>
                   <span className="tank-count">{tanks.length} cadastrados</span>
                 </div>
@@ -2192,7 +1964,7 @@ export function App() {
                             onClick={() => {
                               if (
                                 !window.confirm(
-                                  `Excluir o tanque ${t.code}? Tanques com ciclos associados não podem ser excluídos.`,
+                                  `Excluir o tanque ${t.code}? Tanques com Ciclos de tanque associados não podem ser excluídos.`,
                                 )
                               )
                                 return;
@@ -2221,7 +1993,7 @@ export function App() {
                   </div>
                 )}
                 <p className="helper">
-                  Para preservar o histórico, tanques com ciclos associados só podem ser desativados.
+                  Para preservar o histórico, tanques com Ciclos de tanque associados só podem ser desativados.
                 </p>
               </section>
             </div>

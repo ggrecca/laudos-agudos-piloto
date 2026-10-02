@@ -1087,3 +1087,20 @@ hr {
 
 /* Separate analytical responsibles from authorization records on screen and print. */
 .cert-responsibles + .cert-authorizations:not(:empty) { margin-top: 28px; }
+
+/* Operational history stays secondary to active tank cycles. */
+.filter-bar {display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin:12px 0 20px}
+.filter-bar .field {min-width:145px;flex:1;margin:0}
+.filter-bar .field:first-child {min-width:210px;flex:2}
+.history-row {display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 0;border-bottom:1px solid #e5ebe7}
+.history-row p {margin:8px 0}
+.history-row small, .table-wrap td small {display:block;color:#68776d;max-width:440px;white-space:normal}
+.spec-hint {font-size:12px;color:#587064;line-height:1.45}
+.wide-modal {width:min(1100px,94vw);max-width:1100px;max-height:88vh;overflow:auto}
+.wide-modal details {padding:16px 0;border-bottom:1px solid #e5ebe7}
+.wide-modal summary {cursor:pointer;font-weight:600}
+.wide-modal dl>div {display:flex;gap:20px;padding:6px 0}
+.wide-modal dd {margin:0;color:#587064}
+.cancelled-certificate {border:2px solid #a82424}
+.cancelled-banner {padding:14px;background:#fff0ef;color:#a82424;font-weight:800;font-size:24px;letter-spacing:.12em;text-align:center;margin-bottom:20px}
+@media print {.cancelled-banner {print-color-adjust:exact}.cancelled-certificate {border:2px solid #a82424}}
