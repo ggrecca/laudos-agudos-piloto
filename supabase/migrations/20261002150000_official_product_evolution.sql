@@ -672,3 +672,44 @@ $function$
 
 revoke all on public.pilot_destinations,public.pilot_product_versions,public.pilot_authorization_requests from public,anon,authenticated;
 grant select on public.pilot_destinations,public.pilot_product_versions,public.pilot_authorization_requests to authenticated;
+
+CREATE OR REPLACE FUNCTION pilot_private.has_exception(specs jsonb, vals jsonb)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+declare i integer; s jsonb; v text; n numeric; abnormal boolean := false;
+begin
+  if jsonb_typeof(specs) <> 'array' or jsonb_array_length(specs) = 0
+    or jsonb_typeof(vals) <> 'array' or jsonb_array_length(vals) <> jsonb_array_length(specs) then
+    raise exception 'Resultados ou especificações incompletos';
+  end if;
+  for i in 0..jsonb_array_length(specs)-1 loop
+    s := specs->i; v := trim(vals->>i);
+    if coalesce(s->>'name','') = '' then raise exception 'Especificação sem nome'; end if;
+    if coalesce(v,'') = '' then
+      if coalesce((s->>'required')::boolean,true) then raise exception 'Análise obrigatória ausente: %', s->>'name'; end if;
+      continue;
+    end if;
+    if s ? 'qual' then
+      if not exists (select 1 from jsonb_array_elements_text(s->'qual') allowed where allowed = v) then abnormal := true; end if;
+    else
+      if v !~* '^[+-]?([0-9]+([.,][0-9]*)?|[.,][0-9]+)(e[+-]?[0-9]+)?
+      exception when invalid_text_representation then raise exception 'Resultado numérico inválido: %', s->>'name'; end;
+      if (s ? 'min' and n < (s->>'min')::numeric) or (s ? 'max' and n > (s->>'max')::numeric) then abnormal := true; end if;
+    end if;
+  end loop;
+  return abnormal;
+end $function$
+ then
+        raise exception 'Resultado numérico inválido: %', s->>'name';
+      end if;
+      begin n := replace(v,',','.')::numeric;
+      exception when invalid_text_representation then raise exception 'Resultado numérico inválido: %', s->>'name'; end;
+      if (s ? 'min' and n < (s->>'min')::numeric) or (s ? 'max' and n > (s->>'max')::numeric) then abnormal := true; end if;
+    end if;
+  end loop;
+  return abnormal;
+end $function$
+;

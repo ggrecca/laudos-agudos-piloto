@@ -345,18 +345,18 @@ export function App() {
       approvalsResult,
       pendingResult, destinationResult, requestsResult, usersResult, versionsResult,
     ] = await Promise.all([
-      fetchAll<Product>((from,to)=>db.from("pilot_products").select("*").order("name").range(from,to)),
+      fetchAll<Product>((from,to)=>db.from("pilot_products").select("*").order("name").order("id").range(from,to)),
       fetchAll<Tank>((from,to)=>db.from("pilot_tanks").select("*").order("code").range(from,to)),
       fetchAll<Cycle>((from,to)=>db.from("pilot_cycles").select("*").order("id", { ascending: false }).range(from,to)),
       fetchAll<Loading>((from,to)=>db.from("pilot_loadings").select("*").order("id", { ascending: false }).range(from,to)),
-      fetchAll<Approval>((from,to)=>db.from("pilot_approvals").select("*").range(from,to)),
+      fetchAll<Approval>((from,to)=>db.from("pilot_approvals").select("*").order("id").range(from,to)),
       canManage
         ? fetchAll<PendingProfile>((from,to)=>db.rpc("pilot_list_pending_profiles").range(from,to))
         : Promise.resolve({ data: [], error: null }),
       fetchAll<{id:string;name:string;active:boolean}>((from,to)=>db.from("pilot_destinations").select("*").order("display_order").range(from,to)),
       fetchAll<Request>((from,to)=>db.from("pilot_authorization_requests").select("*").order("id", { ascending:false }).range(from,to)),
       canManage ? fetchAll<ManagedUser>((from,to)=>db.rpc("pilot_list_users").range(from,to)) : Promise.resolve({data:[],error:null}),
-      can(nextPermissions,"products.manage") ? fetchAll<Version>((from,to)=>db.from("pilot_product_versions").select("*").range(from,to)) : Promise.resolve({data:[],error:null}),
+      can(nextPermissions,"products.manage") ? fetchAll<Version>((from,to)=>db.from("pilot_product_versions").select("*").order("product_id").order("version").range(from,to)) : Promise.resolve({data:[],error:null}),
     ]);
     for (const result of [
       productsResult,
@@ -899,6 +899,7 @@ export function App() {
               return (
                 <button
                   key={v.name}
+                  aria-label={v.name}
                   className={view === v.name ? "active" : ""}
                   onClick={() => navigateTo(v.name)}
                 >
@@ -1772,11 +1773,6 @@ export function App() {
                     </button>
                   </div>
                 ))}
-                <datalist id="analysis-names">
-                  {analysisSuggestions.map((name) => (
-                    <option key={name} value={name} />
-                  ))}
-                </datalist>
                 <div className="actions">
                   <button
                     onClick={() =>
