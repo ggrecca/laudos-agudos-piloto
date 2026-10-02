@@ -107,12 +107,12 @@ type View =
   | "Carregamentos"
   | "Autorizações"
   | "Laudos"
-  | "Ciclos de tanque"
+  | "Ciclos de tanques"
   | "Cadastros"
   | "Usuários";
 const views: { name: View; icon: typeof Truck }[] = [
   { name: "Início", icon: Home },
-  { name: "Ciclos de tanque", icon: Droplets },
+  { name: "Ciclos de tanques", icon: Droplets },
   { name: "Carregamentos", icon: Truck },
   { name: "Autorizações", icon: ShieldCheck },
   { name: "Laudos", icon: FileCheck2 },
@@ -592,7 +592,7 @@ export function App() {
     setNotice("");
   }
   function startNewCycle() {
-    navigateTo("Ciclos de tanque");
+    navigateTo("Ciclos de tanques");
     setNewCycle(true);
     setCycleAttempted(false);
     setCycleForm({
@@ -956,7 +956,7 @@ export function App() {
             >
               <FlowStep
                 number="01"
-                count={`${activeCycles.length} ${activeCycles.length === 1 ? "Ciclo de tanque ativo" : "Ciclos de tanque ativos"}`}
+                count={`${activeCycles.length} ${activeCycles.length === 1 ? "Ciclo de tanque ativo" : "Ciclos de tanques ativos"}`}
                 title="Prepare o Ciclo de tanque"
                 description="Selecione tanque e produto e informe fabricação, lotes e valores de referência."
                 note={
@@ -983,10 +983,10 @@ export function App() {
                     onClick={() =>
                       canCreateCycle
                         ? startNewCycle()
-                        : navigateTo("Ciclos de tanque")
+                        : navigateTo("Ciclos de tanques")
                     }
                   >
-                    {canCreateCycle ? "Iniciar novo Ciclo de tanque" : "Ver Ciclos de tanque"}
+                    {canCreateCycle ? "Iniciar novo Ciclo de tanque" : "Ver Ciclos de tanques"}
                   </button>
                 )}
               </FlowStep>
@@ -1402,7 +1402,7 @@ export function App() {
             ))}
             <AuthorizationHistory requests={requests} db={db} run={run} busy={busy} canDecide={can(permissions,"cancellations.decide")}
               open={r=>{
-                if(r.cycle_id){setCycleToOpen(r.cycle_id);setView("Ciclos de tanque");setSelected(null);}
+                if(r.cycle_id){setCycleToOpen(r.cycle_id);setView("Ciclos de tanques");setSelected(null);}
                 else {const l=loadings.find(l=>l.id===r.loading_id);if(l)openExisting(l);}
               }}/>
             {decision && (
@@ -1488,12 +1488,12 @@ export function App() {
               />
             </section>
           </>
-        ) : view === "Ciclos de tanque" ? (
+        ) : view === "Ciclos de tanques" ? (
           <>
             <div className="heading">
               <div>
-                <h1>Ciclos de tanque</h1>
-                <p>Acompanhe os Ciclos de tanque ativos e a referência de cada tanque.</p>
+                <h1>Ciclos de tanques</h1>
+                <p>Acompanhe os Ciclos de tanques ativos e a referência de cada tanque.</p>
               </div>
               {internal && (
                 <button
@@ -1645,7 +1645,7 @@ export function App() {
               <div>
                 <h1>Cadastros</h1>
                 <p>
-                  Configure produtos e tanques antes de registrar Ciclos de tanque.
+                  Configure produtos e tanques antes de registrar Ciclos de tanques.
                 </p>
               </div>
             </div>
@@ -1823,7 +1823,7 @@ export function App() {
                 <div className="tank-header">
                   <div>
                     <h2>Tanques</h2>
-                    <p>Gerencie os cadastros usados para abrir Ciclos de tanque.</p>
+                    <p>Gerencie os cadastros usados para abrir Ciclos de tanques.</p>
                   </div>
                   <span className="tank-count">{tanks.length} cadastrados</span>
                 </div>
@@ -1974,7 +1974,7 @@ export function App() {
                             onClick={() => {
                               if (
                                 !window.confirm(
-                                  `Excluir o tanque ${t.code}? Tanques com Ciclos de tanque associados não podem ser excluídos.`,
+                                  `Excluir o tanque ${t.code}? Tanques com Ciclos de tanques associados não podem ser excluídos.`,
                                 )
                               )
                                 return;
@@ -2003,7 +2003,7 @@ export function App() {
                   </div>
                 )}
                 <p className="helper">
-                  Para preservar o histórico, tanques com Ciclos de tanque associados só podem ser desativados.
+                  Para preservar o histórico, tanques com Ciclos de tanques associados só podem ser desativados.
                 </p>
               </section>
             </div>

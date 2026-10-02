@@ -153,7 +153,7 @@ let browser,lastPage;
  async function nav(name){await page.locator(".sidebar nav").getByRole("button",{name,exact:true}).click();}
  async function login(name){await page.goto("http://127.0.0.1:5173");await page.getByLabel("E-mail",{exact:true}).fill(users[name].email);await page.getByLabel("Senha",{exact:true}).fill(password);await page.getByRole("button",{name:"Entrar",exact:true}).click();await page.locator(".sidebar").waitFor();}
  await login("operador");
- await nav("Ciclos de tanque");await page.getByRole("button",{name:"Novo Ciclo de tanque",exact:true}).click();
+ await nav("Ciclos de tanques");await page.getByRole("button",{name:"Novo Ciclo de tanque",exact:true}).click();
  await page.locator('[data-field="tank_id"] select').selectOption({label:"WEB-TANK · Resina"});
  await page.locator('[data-field="product_id"] select').selectOption({label:"Resina CI versão 2 · v4"});
  await page.getByRole("combobox",{name:"Lotes",exact:true}).fill("WEB-LOTE");
@@ -167,6 +167,16 @@ let browser,lastPage;
  await page.screenshot({path:"test-results/tank-cycles-1440.png",fullPage:true});console.log("VISUAL_CYCLES:"+ (await page.screenshot({type:"jpeg",quality:65})).toString("base64"));
  record("Navegador: login/navegação, Ciclo de tanque, limites compartilhados e erro obrigatório visível");
  const webCard=page.locator(".card-grid .card").filter({hasText:"WEB-LOTE"});
+ const consultButton=webCard.getByRole("button",{name:"Consultar",exact:true});
+ const cancellationButton=webCard.getByRole("button",{name:"Solicitar cancelamento",exact:true});
+ for(const control of [consultButton,cancellationButton]){
+  const bounds=await control.boundingBox();assert.ok(bounds.width<=36&&bounds.height<=36);
+  assert.equal(await control.innerText(),"");
+ }
+ await consultButton.click();await page.getByRole("dialog",{name:"Consultar Ciclo de tanque",exact:true}).waitFor();
+ await page.getByRole("button",{name:"Fechar",exact:true}).click();
+ await cancellationButton.click();await page.getByRole("dialog",{name:"Solicitar cancelamento",exact:true}).waitFor();
+ await page.getByRole("button",{name:"Voltar",exact:true}).click();
  await webCard.getByRole("button",{name:"Novo carregamento",exact:true}).click();
  await page.getByRole("button",{name:"Salvar rascunho",exact:true}).click();
  await page.locator(".invalid-field").first().waitFor();
@@ -182,7 +192,7 @@ let browser,lastPage;
  await page.locator(".certificate").waitFor();await page.screenshot({path:"test-results/certificate-1440.png",fullPage:true});console.log("VISUAL_CERTIFICATE:"+ (await page.screenshot({type:"jpeg",quality:65})).toString("base64"));
  record("Navegador: carregamento, erro localizado, unidade estruturada, rascunho e emissão real");
 
- await nav("Ciclos de tanque");
+ await nav("Ciclos de tanques");
  const endedRow=page.locator("tbody tr").filter({hasText:"T-CI-2"});
  await endedRow.getByRole("button",{name:"Consultar",exact:true}).click();
  await page.getByRole("dialog",{name:"Consultar Ciclo de tanque",exact:true}).waitFor();
@@ -216,6 +226,15 @@ let browser,lastPage;
  record("Navegador: consulta de Ciclo cancelado, solicitação de referência, aprovação, estado sincronizado, emissão e cancelamento autorizado");
 
  await page.getByRole("button",{name:"Sair",exact:true}).click();await page.getByLabel("E-mail",{exact:true}).waitFor();await login("admin");
+ await nav("Ciclos de tanques");
+ for(const width of [1280,1920]){
+  await page.setViewportSize({width,height:1000});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert.ok(await page.locator(".cycle-card-actions").getByRole("button",{name:"Encerrar ciclo",exact:true}).count());
+  await page.screenshot({path:"test-results/cycle-actions-"+width+".png",fullPage:true});
+  if(width===1280)console.log("VISUAL_CYCLES_ADMIN:"+(await page.screenshot({type:"jpeg",quality:65})).toString("base64"));
+ }
+ await page.setViewportSize({width:1440,height:1000});
  await nav("Cadastros");
  await page.getByLabel("Código",{exact:true}).first().fill("CI-001");
  await page.getByRole("button",{name:"Abrir / editar produto existente",exact:true}).click();

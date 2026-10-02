@@ -1,4 +1,5 @@
 import { Children, cloneElement, isValidElement, useEffect, useState, type ReactNode } from "react";
+import { Eye, CircleX } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { RecentInput } from "./RecentInput";
 import { analysisResult, specificationText } from "./flow";
@@ -21,10 +22,10 @@ function Field({label,children}:{label:string;children:ReactNode}) {
  return <label className="field"><span>{label}</span>{controls}</label>;
 }
 export function SpecificationHint({spec}:{spec:Spec}) {return <span className="spec-hint">Especificação: {specificationText(spec)} {spec.unit}</span>}
-export function CancellationButton({kind,id,requests,db,run,busy,disabled=false}:{kind:"cancel_cycle"|"cancel_certificate";id:number;requests:Request[];db:SupabaseClient;run:Run;busy:boolean;disabled?:boolean}) {
+export function CancellationButton({kind,id,requests,db,run,busy,disabled=false,compact=false}:{kind:"cancel_cycle"|"cancel_certificate";id:number;requests:Request[];db:SupabaseClient;run:Run;busy:boolean;disabled?:boolean;compact?:boolean}) {
  const [open,setOpen]=useState(false),[reason,setReason]=useState("");
  const pending=requests.find(r=>r.kind===kind && (r.cycle_id===id||r.loading_id===id) && r.decision==="pending");
- return <>{pending ? <span className="pill amber">Cancelamento pendente</span> : <button disabled={busy||disabled} onClick={()=>{setReason("");setOpen(true)}}>Solicitar cancelamento</button>}
+ return <>{pending ? <span className="pill amber">Cancelamento pendente</span> : <button type="button" className={compact?"cycle-action icon-button danger":undefined} aria-label="Solicitar cancelamento" title={disabled?"Cancelamento bloqueado: há carregamentos vinculados.":"Solicitar cancelamento"} disabled={busy||disabled} onClick={()=>{setReason("");setOpen(true)}}>{compact?<CircleX size={16} aria-hidden="true"/>:"Solicitar cancelamento"}</button>}
  {open && <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-label="Solicitar cancelamento">
  <h2>Solicitar cancelamento</h2><p>O registro original será preservado. A decisão exige Operador Técnico ou superior.</p>
  <Field label="Motivo obrigatório"><textarea autoFocus value={reason} onChange={e=>setReason(e.target.value)}/></Field>
@@ -81,7 +82,7 @@ export function ProductList({products,versions,edit,inactivate,busy}:{products:P
  return <section className="product-list"><h3>Produtos cadastrados</h3><div className="filter-bar"><Field label="Buscar produto"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Código ou descrição…"/></Field><Field label="Situação do produto"><select value={status} onChange={e=>setStatus(e.target.value)}><option value="all">Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option></select></Field></div>
  {filtered.map(p=><div className="history-row" key={p.id}><div><strong>{p.code} · {p.name}</strong><small>{p.family} · v{p.version} · {p.specifications.length} análises · {p.active?"Ativo":"Inativo"}</small></div><div className="actions"><button onClick={()=>setSelected(p.id)}>Detalhes / versões</button><button disabled={busy} onClick={()=>edit(p)}>Editar</button>{p.active&&<button disabled={busy} onClick={()=>inactivate(p)}>Inativar</button>}</div></div>)}
  {!filtered.length&&<p className="empty">Nenhum produto neste filtro.</p>}
- {product&&<div className="modal-backdrop"><section className="modal wide-modal" role="dialog" aria-modal="true" aria-label="Versões do produto"><div className="section-head"><h2>{product.code} · {product.name}</h2><button onClick={()=>setSelected(null)}>Fechar</button></div><p>Alterações geram novas versões. Ciclos de tanque e laudos preservam os dados originais.</p>
+ {product&&<div className="modal-backdrop"><section className="modal wide-modal" role="dialog" aria-modal="true" aria-label="Versões do produto"><div className="section-head"><h2>{product.code} · {product.name}</h2><button onClick={()=>setSelected(null)}>Fechar</button></div><p>Alterações geram novas versões. Ciclos de tanques e laudos preservam os dados originais.</p>
  {versions.filter(v=>v.product_id===product.id).sort((a,b)=>b.version-a.version).map(v=><details key={v.version}><summary>Versão {v.version} · {v.provenance==="recorded"?date(v.changed_at)+" · "+(v.author_name||"Não identificado"):"Dados anteriores capturados em "+date(v.captured_at)+"; autoria/data da alteração não registradas"}</summary>
  <p>{v.data.code||"Código não registrado"} · {v.data.name||"Nome não registrado"} · {v.data.active===false?"Inativo":"Ativo"}</p>
  <dl>{v.data.specifications?.map((s,i)=><div key={i}><dt>{s.name} {s.unit}</dt><dd>{specificationText(s)}{s.required?" · obrigatório":""}</dd></div>)}</dl>
@@ -95,18 +96,26 @@ export function CycleHistory({cycles,tanks,products,loadings,requests,db,run,bus
  const filtered=cycles.filter(c=>(status==="all"||c.status===status)&&(tank==="all"||c.tank_id===Number(tank))&&(product==="all"||c.product_id===Number(product))&&(!from||c.manufactured_at.slice(0,10)>=from)&&(!to||c.manufactured_at.slice(0,10)<=to)&&[c.id,c.lots,tankFor(c)?.code,productFor(c)].join(" ").toLowerCase().includes(query.toLowerCase()));
  useEffect(()=>{if(initialId)setSelected(initialId)},[initialId]);
  const current=cycles.find(c=>c.id===selected);
- function actions(c:Cycle){const dependencies=loadings.filter(l=>l.cycle_id===c.id),pending=requests.some(r=>r.cycle_id===c.id&&r.decision==="pending");
- return <div className="actions"><button onClick={()=>setSelected(c.id)}>Consultar</button>{c.active&&canCreate&&<button disabled={busy||pending||!products.find(p=>p.id===c.product_id)?.active} onClick={()=>createLoading(c)}>Novo carregamento</button>}
- {c.active&&canClose&&<button disabled={busy||pending} onClick={()=>closeCycle(c)}>Encerrar Ciclo de tanque</button>}
- {c.active&&canCancel&&<CancellationButton kind="cancel_cycle" id={c.id} requests={requests} db={db} run={run} busy={busy} disabled={dependencies.length>0}/>}
- {c.active&&canCancel&&dependencies.length>0&&<small>Cancelamento bloqueado: há carregamentos vinculados.</small>}</div>}
+ function actions(c:Cycle,compact=false){
+ const dependencies=loadings.filter(l=>l.cycle_id===c.id),pending=requests.some(r=>r.cycle_id===c.id&&r.decision==="pending");
+ const secondary=<>
+ <button type="button" className={compact?"cycle-action icon-button":undefined} aria-label="Consultar" title="Consultar ciclo de tanque" onClick={()=>setSelected(c.id)}>{compact?<Eye size={16} aria-hidden="true"/>:"Consultar"}</button>
+ {c.active&&canCancel&&<CancellationButton kind="cancel_cycle" id={c.id} requests={requests} db={db} run={run} busy={busy} disabled={dependencies.length>0} compact={compact}/>}
+ </>;
+ return <div className={"actions"+(compact?" cycle-card-actions":"")}>
+ {c.active&&canCreate&&<button type="button" className={compact?"cycle-action cycle-loading-action":undefined} disabled={busy||pending||!products.find(p=>p.id===c.product_id)?.active} onClick={()=>createLoading(c)}>Novo carregamento</button>}
+ {c.active&&canClose&&<button type="button" className={compact?"cycle-action":undefined} disabled={busy||pending} onClick={()=>closeCycle(c)}>Encerrar ciclo</button>}
+ {compact?<div className="cycle-secondary-actions">{secondary}</div>:secondary}
+ {c.active&&canCancel&&dependencies.length>0&&<small className={compact?"cycle-action-note":undefined}>Cancelamento bloqueado: há carregamentos vinculados.</small>}
+ </div>
+ }
  return <><section className="card"><div className="filter-bar"><Field label="Buscar Ciclo de tanque"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Tanque, lote, produto ou número…"/></Field>
  <Field label="Status"><select value={status} onChange={e=>setStatus(e.target.value)}><option value="all">Todos</option>{["Ativo","Encerrado","Cancelado"].map(s=><option key={s}>{s}</option>)}</select></Field>
  <Field label="Tanque"><select value={tank} onChange={e=>setTank(e.target.value)}><option value="all">Todos</option>{tanks.map(t=><option key={t.id} value={t.id}>{t.code}</option>)}</select></Field>
  <Field label="Produto"><select value={product} onChange={e=>setProduct(e.target.value)}><option value="all">Todos</option>{products.map(p=><option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}</select></Field>
  <Field label="Fabricação de"><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></Field><Field label="Até"><input type="date" value={to} onChange={e=>setTo(e.target.value)}/></Field></div></section>
- <div className="card-grid">{filtered.filter(c=>c.active).map(c=><section className="card" key={c.id}><div className="section-head"><h2>{tankFor(c)?.code} · Ciclo de tanque {c.id}</h2><span className="pill green">Ativo</span></div><strong>{productFor(c)}</strong><p className="muted">Lotes {c.lots} · fabricação {date(c.manufactured_at)}</p><p className="muted">Especificação v{c.specification_version} · {c.analyst}</p>{actions(c)}</section>)}</div>
- <section className="card"><h2>Ciclos de tanque encerrados</h2><p className="muted">Histórico de encerrados e cancelados.</p><div className="table-wrap"><table><thead><tr><th>Ciclo de tanque</th><th>Produto / lotes</th><th>Fabricação</th><th>Status</th><th>Consulta</th></tr></thead><tbody>{filtered.filter(c=>!c.active).map(c=><tr key={c.id}><td>#{c.id} · {tankFor(c)?.code}</td><td>{productFor(c)}<small>{c.lots} · v{c.specification_version}</small></td><td>{date(c.manufactured_at)}</td><td><span className={"pill "+(c.status==="Cancelado"?"red":"")}>{c.status}</span></td><td><button onClick={()=>setSelected(c.id)}>Consultar</button></td></tr>)}</tbody></table></div>{!filtered.some(c=>!c.active)&&<p className="empty">Nenhum Ciclo de tanque encerrado neste filtro.</p>}</section>
+ <div className="card-grid">{filtered.filter(c=>c.active).map(c=><section className="card" key={c.id}><div className="section-head"><h2>{tankFor(c)?.code} · Ciclo de tanque {c.id}</h2><span className="pill green">Ativo</span></div><strong>{productFor(c)}</strong><p className="muted">Lotes {c.lots} · fabricação {date(c.manufactured_at)}</p><p className="muted">Especificação v{c.specification_version} · {c.analyst}</p>{actions(c,true)}</section>)}</div>
+ <section className="card"><h2>Ciclos de tanques encerrados</h2><p className="muted">Histórico de encerrados e cancelados.</p><div className="table-wrap"><table><thead><tr><th>Ciclo de tanque</th><th>Produto / lotes</th><th>Fabricação</th><th>Status</th><th>Consulta</th></tr></thead><tbody>{filtered.filter(c=>!c.active).map(c=><tr key={c.id}><td>#{c.id} · {tankFor(c)?.code}</td><td>{productFor(c)}<small>{c.lots} · v{c.specification_version}</small></td><td>{date(c.manufactured_at)}</td><td><span className={"pill "+(c.status==="Cancelado"?"red":"")}>{c.status}</span></td><td><button onClick={()=>setSelected(c.id)}>Consultar</button></td></tr>)}</tbody></table></div>{!filtered.some(c=>!c.active)&&<p className="empty">Nenhum Ciclo de tanque encerrado neste filtro.</p>}</section>
  {current&&<div className="modal-backdrop"><section className="modal wide-modal" role="dialog" aria-modal="true" aria-label="Consultar Ciclo de tanque"><div className="section-head"><h2>Ciclo de tanque #{current.id} · {current.status}</h2><button onClick={()=>setSelected(null)}>Fechar</button></div>
  <p>{tankFor(current)?.code} · {productFor(current)} · v{current.specification_version}</p><p>Lotes {current.lots} · fabricação {date(current.manufactured_at)} · análises: {current.analyst}</p>
  <div className="table-wrap"><table><thead><tr><th>Análise</th><th>Referência</th><th>Especificação</th><th>Situação</th></tr></thead><tbody>{current.specifications.map((s,i)=><tr key={i}><td>{s.name} {s.unit}</td><td>{current.reference_values[i]||"—"}</td><td>{specificationText(s)}</td><td>{analysisResult(s,current.reference_values[i]).label}</td></tr>)}</tbody></table></div>

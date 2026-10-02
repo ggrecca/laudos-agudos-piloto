@@ -1104,3 +1104,24 @@ hr {
 .cancelled-certificate {border:2px solid #a82424}
 .cancelled-banner {padding:14px;background:#fff0ef;color:#a82424;font-weight:800;font-size:24px;letter-spacing:.12em;text-align:center;margin-bottom:20px}
 @media print {.cancelled-banner {print-color-adjust:exact}.cancelled-certificate {border:2px solid #a82424}}
+
+/* Compact controls keep tank-cycle cards focused on operational data. */
+.cycle-card-actions { gap: 8px; padding-top: 14px; border-top: 1px solid #edf1ee; }
+.cycle-secondary-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.card-grid .card .cycle-card-actions button.cycle-action {
+  min-height: 32px; height: 32px; padding: 5px 10px; border-radius: 7px;
+  font-size: 12px; line-height: 1.2; white-space: nowrap;
+}
+.card-grid .card .cycle-card-actions button.cycle-loading-action {
+  background: #edf5f0; border-color: #c7dece; color: #23543d;
+}
+.card-grid .card .cycle-card-actions button.cycle-loading-action:hover { background: #e2efe7; }
+.card-grid .card .cycle-card-actions button.icon-button {
+  width: 32px; padding: 0; flex: none; background: transparent; border-color: #dce6df;
+}
+.card-grid .card .cycle-card-actions button.icon-button:hover { background: #f1f6f3; }
+.card-grid .card .cycle-card-actions button.icon-button.danger { color: #a63737; }
+.card-grid .card .cycle-card-actions button.icon-button.danger:hover {
+  background: #fff2f1; border-color: #dbb1af;
+}
+.cycle-card-actions .cycle-action-note { flex-basis: 100%; font-size: 11px; color: #68776d; }
