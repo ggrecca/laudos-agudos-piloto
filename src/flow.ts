@@ -67,7 +67,7 @@ export function cycleValidation(form: CycleInput, specifications: AnalysisSpec[]
 }
 export function approvalReasons(specifications: AnalysisSpec[], values: string[], source: string): string[] {
   const reasons = source === "ref"
-    ? ["Uso das análises de referência do ciclo em vez de análises do caminhão. Requer autorização de Operador Técnico, Supervisor ou Administrador."] : [];
+    ? ["Uso das análises de referência do Ciclo de tanque em vez de análises do caminhão. Requer autorização de Operador Técnico, Supervisor ou Administrador."] : [];
   const deviations = specifications.map((spec, i) => analysisResult(spec, values[i])).filter(r => r.status === "nonconforming");
   reasons.push(...deviations.map(r => r.reason!));
   if (deviations.length) reasons.push("Resultados fora da especificação exigem liberação em caráter de exceção por Supervisor ou Administrador.");
@@ -88,7 +88,14 @@ export function effectiveLoadingState(loading: LoadingRecord, specifications: An
   return !needed.invalid && !needed.exception && !needed.reuse ? "Autorizado para emissão" : loading.state;
 }
 export function errorMessage(error: unknown): string {
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") return error.message;
+  if (error && typeof error === "object") {
+    const code = "code" in error ? error.code : undefined;
+    if (code === "42501") return "Seu perfil não tem permissão para esta ação.";
+    if (code === "23505") return "Já existe um registro com esta identificação. Abra o cadastro existente.";
+    if (code === "23503") return "O registro tem vínculos que precisam ser preservados.";
+    if (typeof code === "string" && /^(22|23|42|PGRST)/.test(code)) return "Não foi possível concluir a operação. Revise os dados ou entre em contato com o responsável.";
+    if ("message" in error && typeof error.message === "string") return error.message;
+  }
   if (typeof error === "string") return error;
   return "Não foi possível concluir a operação. Tente novamente.";
 }

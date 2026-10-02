@@ -25,8 +25,14 @@ jobs:
           cp supabase/001_pilot.sql supabase/migrations/20260901000001_baseline.sql
           cp supabase/002_consumer_scope.sql supabase/migrations/20260901000002_consumer.sql
           cp supabase/003_security_hardening.sql supabase/migrations/20260901000003_security.sql
+          mv supabase/migrations/20261002150000_official_product_evolution.sql /tmp/laudos-evolution.sql
           supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
           supabase status -o env > /tmp/laudos-local.env
+          set -a
+          source /tmp/laudos-local.env
+          set +a
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/migration-legacy.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/laudos-evolution.sql
       - name: Run database, Auth, RLS and browser flows
         run: |
           set -a

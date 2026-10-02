@@ -382,7 +382,8 @@ begin
   select * into c from public.pilot_cycles where id=p_cycle_id and active for update;
   if exists(select 1 from public.pilot_authorization_requests where cycle_id=p_cycle_id and kind='cancel_cycle' and decision='pending') then raise exception 'Há um cancelamento pendente deste Ciclo de tanque'; end if;
  if c.id is null then raise exception 'Ciclo de tanque não está ativo'; end if;
- if not exists(select 1 from public.pilot_products where id=c.product_id and active) then raise exception 'Produto inativo: novos carregamentos não são permitidos'; end if;
+ perform 1 from public.pilot_products where id=c.product_id and active for share;
+ if not found then raise exception 'Produto inativo: novos carregamentos não são permitidos'; end if;
   if p_source not in ('own','ref') or p_loaded_at is null or
     length(trim(coalesce(p_plate,''))) < 7 or length(trim(coalesce(p_trailer,''))) = 0 or
     length(trim(coalesce(p_carrier,''))) = 0 or length(trim(coalesce(p_destination,''))) = 0 or
@@ -443,7 +444,7 @@ begin
  end if;
  if exceptional then
  insert into public.pilot_authorization_requests(kind,loading_id,edit_version,requester_id,requester_name,requested_at,reason)
- values('exception',p_id,l.edit_version,auth.uid(),pilot_private.identity_name(),now(),'Um ou mais resultados estão fora da especificação: '||(select string_agg(s->>'name',', ') from jsonb_array_elements(c.specifications) s));
+ values('exception',p_id,l.edit_version,auth.uid(),pilot_private.identity_name(),now(),'Resultados fora da especificação: '||(select string_agg((s->>'name')||' = '||(l.values->>((ord-1)::integer)), '; ' order by ord) from jsonb_array_elements(c.specifications) with ordinality x(s,ord) where pilot_private.has_exception(jsonb_build_array(s),jsonb_build_array(l.values->((ord-1)::integer)))));
  end if;
  update public.pilot_loadings set state='Aguardando autorização',updated_at=now() where id=p_id;
   insert into public.pilot_audit(actor_id,action,entity,entity_id) values(auth.uid(),'solicitou autorização','loading',p_id);
@@ -647,3 +648,7 @@ do $privileges$ declare f record; begin
 end $privileges$;
 revoke all on pilot_private.permissions from public,anon,authenticated;
 revoke insert,update,delete on public.pilot_destinations,public.pilot_product_versions,public.pilot_authorization_requests from public,anon,authenticated;
+
+notify pgrst, 'reload schema';
+
+grant execute on function pilot_private.can(text) to authenticated;
