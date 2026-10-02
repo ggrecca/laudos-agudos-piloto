@@ -151,7 +151,7 @@ Cadastros, versões, duplicidade e inativação.
 
 Cadastros é uma área do Administrador. Produtos e tanques precisam estar ativos e compatíveis para abrir novos Ciclos de tanques.
 
-1. Para produto: informe código único, descrição, família e análises. Configure nomes, unidades, obrigatoriedade e limites ou critérios qualitativos conforme aplicável.
+1. Para produto: informe código único, descrição, família e análises. Configure nomes, unidades, obrigatoriedade e limites mínimo/máximo para análises numéricas. Para critérios qualitativos já cadastrados, confira as opções em Detalhes / versões; a tela atual não oferece campo para editar essas opções.
 2. Salve o produto. Se o código já existir, use Abrir / editar produto existente e confira se é o cadastro correto.
 3. Na lista, busque por código ou descrição e filtre a situação. Use Editar para alterar o produto e Salvar nova versão para confirmar.
 4. Use Detalhes / versões para consultar dados, autor, data e mudanças. Cada edição gera uma nova versão; os registros anteriores ficam associados aos dados originais.
