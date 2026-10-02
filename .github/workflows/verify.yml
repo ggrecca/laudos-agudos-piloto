@@ -16,3 +16,30 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Create isolated local Supabase (never links production)
+        run: |
+          supabase init
+          cp supabase/001_pilot.sql supabase/migrations/20260901000001_baseline.sql
+          cp supabase/002_consumer_scope.sql supabase/migrations/20260901000002_consumer.sql
+          cp supabase/003_security_hardening.sql supabase/migrations/20260901000003_security.sql
+          supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
+          supabase status -o env > /tmp/laudos-local.env
+      - name: Run database, Auth, RLS and browser flows
+        run: |
+          set -a
+          source /tmp/laudos-local.env
+          set +a
+          export VITE_SUPABASE_URL="$API_URL"
+          export VITE_SUPABASE_PUBLISHABLE_KEY="$ANON_KEY"
+          pnpm exec vite --host 127.0.0.1 > /tmp/laudos-vite.log 2>&1 &
+          npm install --prefix /tmp/laudos-test playwright
+          /tmp/laudos-test/node_modules/.bin/playwright install --with-deps chromium
+          NODE_PATH=/tmp/laudos-test/node_modules node tests/verify.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-evidence
+          path: test-results/
