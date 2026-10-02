@@ -584,6 +584,7 @@ export function App() {
     if (showLoading && !confirmLeaveLoading()) return;
     if (nextView !== "Início") markOnboardingSeen();
     setView(nextView);
+    requestAnimationFrame(()=>window.scrollTo({top:0}));
     setCycleToOpen(null);
     setSelected(null);
     setNewLoading(false);
@@ -733,6 +734,7 @@ export function App() {
     setNewLoading(true);
     setSelected(null);
     setView("Carregamentos");
+    requestAnimationFrame(()=>window.scrollTo({top:0}));
     setNotice("");
   }
   function openExisting(l: Loading) {
@@ -754,6 +756,7 @@ export function App() {
       observation: l.observation,
     });
     setSelected(l.id);
+    requestAnimationFrame(()=>window.scrollTo({top:0}));
     setNewLoading(false);
     setNotice("");
   }
@@ -830,7 +833,7 @@ export function App() {
       p_manufactured_at: localDateTimeToIso(cycleForm.manufactured_at),
       p_lots: cycleForm.lots.trim(), p_reference: cycleForm.reference_values,
       p_analyst: cycleForm.analyst.trim(),
-    }), "Ciclo de tanque criado.", () => { setNewCycle(false); setCycleAttempted(false); });
+    }), "Ciclo de tanque criado.", () => { setNewCycle(false); setCycleAttempted(false); requestAnimationFrame(()=>window.scrollTo({top:0})); });
   }
   function submitLoading(action: "draft" | "request" | "issue") {
     setLoadingAttempt(action);
