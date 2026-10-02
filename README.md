@@ -1,55 +1,47 @@
-# Laudos Agudos — piloto
+# Laudos Agudos
 
-Aplicação independente do protótipo Sites. Vite/React na Vercel e Postgres/Auth no Supabase. O banco começa vazio: não há laudos, resultados nem limites fictícios.
+Sistema de laudos de qualidade das Fábricas Químicas de Agudos. React 19 / TypeScript / Vite no frontend, Supabase Auth e PostgreSQL no backend, Vercel na hospedagem.
 
-## Configuração
+## Arquitetura e configuração
 
-1. Aplicar as migrações `supabase/001_pilot.sql`, `002_consumer_scope.sql`, `003_security_hardening.sql`, `migrations/20260930171905_user_approval_workflow.sql` e `migrations/20260930172542_user_approval_indexes.sql` na ordem indicada. Elas já foram aplicadas ao projeto Supabase `bsxhpethmktjheaimjid` na região `sa-east-1`.
-2. Configurar `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` na Vercel. Ambas são públicas; nunca incluir chaves secretas no front-end.
-3. Configurar os URLs de redirecionamento de Auth no Supabase após conhecer a URL da Vercel. Confirmar entrega de e-mail no ambiente do piloto.
-4. O usuário solicita acesso com nome, e-mail e senha e confirma o e-mail. O cadastro começa como `Pendente` e não acessa os módulos até um Supervisor ou Administrador definir o perfil.
-5. Supervisores podem aprovar como `Consulta`, `Operador A` ou `Operador Técnico`. Administradores podem também aprovar como `Supervisor`; em `Consulta`, o destino/unidade é obrigatório. A decisão fica registrada na auditoria.
-6. Designar o primeiro administrador **somente após verificar seu e-mail** com SQL administrativo:
+As ações de negócio passam por RPCs do PostgreSQL. O navegador usa somente a chave publicável; RLS controla leituras e as funções verificam as permissões do usuário ativo. Nunca inclua chaves de serviço no frontend.
 
-```sql
-update public.pilot_profiles p
-set role = 'Administrador', name = 'NOME CONFIRMADO', active = true,
-    status = 'Ativo', approved_at = now(), decision_reason = 'Bootstrap inicial'
-from auth.users u
-where p.id = u.id and u.email = 'EMAIL_CONFIRMADO' and u.email_confirmed_at is not null;
-```
+As variáveis públicas são `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`. Configure também as URLs de redirecionamento no Supabase Auth. O cadastro exige confirmação de e-mail e aprovação de Supervisor ou Administrador.
 
-O perfil `Administrador` não é atribuído pela tela de aprovação; o primeiro administrador deve ser criado por bootstrap controlado. Alterações de perfis já aprovados continuam fora do escopo desta tela e dependem do administrador do banco neste estágio.
+Aplique os scripts iniciais `supabase/001_pilot.sql`, `002_consumer_scope.sql`, `003_security_hardening.sql` e, em seguida, todos os arquivos de `supabase/migrations` em ordem cronológica. Não reaplique migrations já registradas nem use reset no banco de produção.
 
-## Escopo atual
+Os nomes técnicos `pilot_*`, o nome do repositório e a URL existente foram preservados por compatibilidade. A nomenclatura do produto é **Laudos Agudos**.
 
-- Administrador cadastra produtos, limites analíticos e tanques; ciclos congelam a versão da especificação usada na emissão.
-- Operadores registram carregamentos, resultados, transportadora, placa e analista. Referência do tanque exige autorização técnica; resultado fora de limite exige supervisor.
-- Autorizações e emissão são validadas por funções do banco, com identidade de Auth e trilha de auditoria. Alterar um rascunho incrementa sua versão e invalida decisões anteriores.
-- Unidades consumidoras veem apenas laudos emitidos para o destino atribuído ao seu perfil.
-- Usuários novos ficam pendentes; a área `Usuários` é exibida para Supervisores e Administradores, com regras de atribuição aplicadas novamente no banco.
-- Datas digitadas em `datetime-local` são convertidas para ISO com fuso antes de chegar ao `timestamptz`, evitando deslocamento de horário no Brasil.
+## Regras operacionais
 
-## Compatibilidade com o layout atual
+- Hierarquia: Administrador → Supervisor → Operador Técnico → Operador → Consulta. O valor técnico `Operador A` permanece no banco; a interface apresenta Operador.
+- A matriz funcional está em `pilot_private.permissions`. O frontend recebe as permissões por `pilot_permissions()`; as RPCs validam a mesma fonte.
+- Consulta visualiza laudos emitidos e cancelados de todas as unidades, com os Ciclos de tanque associados; não acessa rascunhos.
+- Supervisor administra somente perfis abaixo do seu e não pode promover alguém para Supervisor/Administrador. Administrador administra todos; a alteração do próprio perfil/status é bloqueada.
+- Produtos são administrados pelo Administrador. Cada alteração e inativação registra nova versão com autor, data e diferenças.
+- Ciclos de tanque preservam a versão e os dados do produto selecionado na abertura. Alterar o cadastro não altera laudos existentes nem especificações de Ciclos de tanque já abertos.
+- Encerramento exige Operador Técnico ou superior e ausência de carregamentos pendentes.
+- Cancelamento de Ciclo de tanque exige motivo e autorização de Operador Técnico ou superior; qualquer carregamento vinculado impede a solicitação/decisão.
+- Laudo emitido é imutável. A correção exige cancelar com autorização e criar um carregamento correto; o original continua consultável como CANCELADO.
+- Uso das análises do tanque exige Operador Técnico ou superior; exceções de especificação exigem Supervisor ou Administrador. Autorizações só valem para a versão de dados avaliada.
+- Decisões permanecem no histórico. Uma edição/rejeição que invalide pendências registra o estado Substituída.
+- Unidades receptoras são registros de `pilot_destinations`, com IDs estáveis. Textos históricos genéricos continuam sem classificação específica; a interface os identifica como destino histórico.
+- Produto inativo permanece no histórico e bloqueia novos Ciclos de tanque/carregamentos. Carregamentos existentes conservam seus dados e permissões.
 
-Os ajustes de interface não exigem mudança de banco: placa, transportadora e responsável são textos com sugestões; fabricação usa `manufactured_at`; filtros, orientação e painel sticky são apresentação. A migração 003 foi necessária por segurança, não por causa do layout: removeu escrita direta das tabelas pelo Data API e manteve as RPCs autenticadas como única fronteira de alteração.
+## Integridade histórica
 
-O layout mais completo do protótipo também exibe histórico de versões de especificação, histórico/encerramento/reabertura de ciclos e revisões/cancelamentos detalhados. Esses recursos não devem ser habilitados no piloto apenas com os campos atuais: antes de portá-los, será necessário criar tabelas de versões/histórico e registrar motivos e atores de cada transição.
+A migration de evolução é aditiva. Não apaga produtos, ciclos, laudos, usuários ou autorizações.
 
-## Ainda não validado para operação real
+Versões anteriores são identificadas como captura de legado quando a autoria/data real não estiverem disponíveis; não se inventam essas informações. As especificações já salvas nos Ciclos de tanque são preservadas. Dados gerais do produto que existiam na implantação são congelados para impedir mudanças retroativas futuras; não se afirma que esses textos foram registrados originalmente na emissão.
 
-- Fluxo completo com contas de operador, supervisor e unidade consumidora; depende de e-mails reais e configuração de Auth.
-- Revisões, cancelamento de laudos e PDF imutável/arquivado. A impressão atual é uma visualização do navegador.
-- Importação dos limites oficiais, destinos e cadastros da Dexco; dupla conferência dos parâmetros antes de emitir qualquer laudo operacional.
-- Teste simultâneo entre usuários, recuperação de sessão, backup e exportação formal para a migração à Dexco.
+As unidades genéricas antigas não são convertidas para MDF/MDP/Revestidos sem evidência. A coluna antiga de destino do perfil é preservada como dado legado e não participa da autorização do perfil Consulta.
 
-O verificador de segurança do Supabase sinaliza nove RPCs `SECURITY DEFINER` expostas a usuários autenticados. Elas são a fronteira de escrita deste piloto: cada função verifica explicitamente `auth.uid()` e o perfil armazenado no banco; `anon` não tem `EXECUTE`, e tabelas não concedem escrita direta ao cliente. Revisar de novo antes de operação real.
+## Desenvolvimento e verificação
 
-## Comandos
+`pnpm install --frozen-lockfile`, `pnpm dev` e `pnpm build`.
 
-```bash
-pnpm install
-cp .env.example .env.local # preencher as duas variáveis públicas
-pnpm dev
-pnpm build
-```
+O workflow `.github/workflows/verify.yml` executa build estrito, cria um Supabase descartável local sem vínculo com produção, injeta registros anteriores à migration, aplica a evolução e roda `tests/verify.cjs`.
+
+A suíte usa login real nos cinco perfis, RPCs, consultas diretas/RLS e Chromium com a aplicação Vite. As capturas e resultados ficam no artefato `verification-evidence`. Dados e credenciais sintéticos dos testes existem somente no runner descartável. O script recusa qualquer URL de banco hospedado.
+
+As versões de bibliotecas de produção permanecem fixadas no lockfile. Playwright é instalado apenas no diretório temporário do runner e não entra no bundle da aplicação.

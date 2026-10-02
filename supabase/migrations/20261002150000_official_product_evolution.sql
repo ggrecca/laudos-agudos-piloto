@@ -148,9 +148,10 @@ create function public.pilot_update_user(p_id uuid,p_name text,p_role text,p_sta
 declare p public.pilot_profiles; actor text:=pilot_private.role();
 begin
  perform pilot_private.assert_permission('users.manage');
+ perform pg_advisory_xact_lock(hashtext('laudos_agudos_user_administration'));
  select * into p from public.pilot_profiles where id=p_id for update;
  if p.id is null then raise exception 'Usuário não encontrado'; end if;
- if p_id=auth.uid() then raise exception 'Não é permitido alterar o próprio acesso'; end if;
+ if p_id=auth.uid() and (p_role is distinct from p.role or p_status is distinct from p.status) then raise exception 'Não é permitido alterar o próprio perfil ou situação de acesso'; end if;
  if actor<>'Administrador' and (pilot_private.rank(p.role)>=pilot_private.rank(actor) or pilot_private.rank(p_role)>=pilot_private.rank(actor)) then raise exception 'Só é permitido administrar perfis abaixo do seu' using errcode='42501'; end if;
  if pilot_private.rank(p_role)=0 or p_status not in ('Ativo','Bloqueado','Rejeitado') or length(trim(coalesce(p_name,'')))<3 or length(trim(coalesce(p_reason,'')))<3 then raise exception 'Informe nome, perfil, situação e motivo da alteração'; end if;
  if p.role='Administrador' and p.active and (p_role<>'Administrador' or p_status<>'Ativo') and (select count(*) from public.pilot_profiles where role='Administrador' and active and status='Ativo')<=1 then raise exception 'Preserve ao menos um Administrador ativo'; end if;
@@ -652,3 +653,22 @@ revoke insert,update,delete on public.pilot_destinations,public.pilot_product_ve
 notify pgrst, 'reload schema';
 
 grant execute on function pilot_private.can(text) to authenticated;
+
+CREATE OR REPLACE FUNCTION public.pilot_list_pending_profiles()
+ RETURNS TABLE(id uuid, name text, email text, role text, status text, destination text, created_at timestamp with time zone)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  select p.id, p.name, u.email, p.role, p.status, p.destination, p.created_at
+  from public.pilot_profiles p
+  join auth.users u on u.id = p.id
+  where pilot_private.can('users.manage') and (pilot_private.role()='Administrador' or pilot_private.rank(p.role)<pilot_private.rank(pilot_private.role()))
+    and p.status = 'Pendente'
+    and p.active = false
+  order by p.created_at asc
+$function$
+;
+
+revoke all on public.pilot_destinations,public.pilot_product_versions,public.pilot_authorization_requests from public,anon,authenticated;
+grant select on public.pilot_destinations,public.pilot_product_versions,public.pilot_authorization_requests to authenticated;

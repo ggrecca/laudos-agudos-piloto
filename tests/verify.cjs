@@ -27,7 +27,7 @@ async function denied(client,name,args,pattern){const r=await client.rpc(name,ar
 const specs=[{name:"pH",unit:"pH",min:6,max:8,required:true},{name:"Aspecto",unit:"",qual:["Límpido"],required:true}];
 const cycleArgs=(tank,product,values=["7","Límpido"])=>({p_tank_id:tank,p_product_id:product,p_manufactured_at:new Date().toISOString(),p_lots:"L-CI",p_reference:values,p_analyst:"Analista CI"});
 const loadingArgs=(cycle,destination,plate="ABC1234",values=["7","Límpido"],source="own")=>({p_cycle_id:cycle,p_plate:plate,p_trailer:"Única",p_carrier:"Transportadora CI",p_destination:destination,p_analyst:"Analista CI",p_loaded_at:new Date().toISOString(),p_values:values,p_source:source,p_observation:"Verificação isolada"});
-let browser;
+let browser,lastPage;
 (async()=>{
  const admin=await make("Administrador","admin"),sup=await make("Supervisor","supervisor"),tech=await make("Operador Técnico","tecnico"),operator=await make("Operador A","operador"),consulta=await make("Consulta","consulta");
  await make("Administrador","admin2");
@@ -144,7 +144,7 @@ let browser;
  await rpc(admin,"pilot_save_tank",{p_code:"WEB-TANK",p_family:"Resina"});
  browser=await chromium.launch({headless:true});
  const context=await browser.newContext({viewport:{width:1440,height:1000}});
- const page=await context.newPage();page.setDefaultTimeout(15000);
+ const page=await context.newPage();lastPage=page;page.setDefaultTimeout(15000);
  const consoleErrors=[];page.on("pageerror",e=>consoleErrors.push(e.message));page.on("console",m=>{if(m.type()==="error")consoleErrors.push(m.text())});
  async function nav(name){await page.locator(".sidebar nav").getByRole("button",{name,exact:true}).click();}
  async function login(name){await page.goto("http://127.0.0.1:5173");await page.getByLabel("E-mail",{exact:true}).fill(users[name].email);await page.getByLabel("Senha",{exact:true}).fill(password);await page.getByRole("button",{name:"Entrar",exact:true}).click();await page.locator(".sidebar").waitFor();}
@@ -202,4 +202,4 @@ let browser;
  await browser.close();
  fs.writeFileSync("test-results/results.json",JSON.stringify({status:"passed",evidence},null,2));
  console.log("ALL",evidence.length,"FLOW GROUPS PASSED");
-})().catch(async e=>{console.error(e);fs.writeFileSync("test-results/results.json",JSON.stringify({status:"failed",evidence,error:e.message},null,2));if(browser)await browser.close();process.exitCode=1});
+})().catch(async e=>{console.error(e);fs.writeFileSync("test-results/results.json",JSON.stringify({status:"failed",evidence,error:e.message},null,2));if(lastPage){await lastPage.screenshot({path:"test-results/failure.png",fullPage:true});fs.writeFileSync("test-results/failure.html",await lastPage.content());}if(browser)await browser.close();process.exitCode=1});

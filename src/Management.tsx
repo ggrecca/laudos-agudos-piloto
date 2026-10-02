@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useEffect, useState, type ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { RecentInput } from "./RecentInput";
 import { analysisResult, specificationText } from "./flow";
@@ -16,7 +16,10 @@ export type Run = (task:()=>PromiseLike<{error:{message:string}|null;data?:unkno
 const date = (s:string|null|undefined) => s ? new Date(s).toLocaleString("pt-BR") : "Não registrado";
 const kindLabel = (kind:Request["kind"]) => ({reuse:"Uso das análises do tanque",exception:"Exceção de especificação",cancel_cycle:"Cancelamento de Ciclo de tanque",cancel_certificate:"Cancelamento de laudo"})[kind];
 const decisionLabel = (d:Request["decision"]) => ({pending:"Pendente",approved:"Aprovada",rejected:"Rejeitada",superseded:"Substituída"})[d];
-function Field({label,children}:{label:string;children:ReactNode}) {return <label className="field"><span>{label}</span>{children}</label>}
+function Field({label,children}:{label:string;children:ReactNode}) {
+ const controls=Children.map(children,c=>isValidElement<{"aria-label"?:string}>(c)&&typeof c.type==="string"?cloneElement(c,{"aria-label":c.props["aria-label"]||label}):c);
+ return <label className="field"><span>{label}</span>{controls}</label>;
+}
 export function SpecificationHint({spec}:{spec:Spec}) {return <span className="spec-hint">Especificação: {specificationText(spec)} {spec.unit}</span>}
 export function CancellationButton({kind,id,requests,db,run,busy,disabled=false}:{kind:"cancel_cycle"|"cancel_certificate";id:number;requests:Request[];db:SupabaseClient;run:Run;busy:boolean;disabled?:boolean}) {
  const [open,setOpen]=useState(false),[reason,setReason]=useState("");

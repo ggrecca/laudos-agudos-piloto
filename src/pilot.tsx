@@ -149,9 +149,9 @@ const emptySpec = (): Spec => ({ name: "", unit: "", required: true });
 function Field({ label, children, error, fieldKey }: { label: string; children: ReactNode; error?: string; fieldKey?: string }) {
   const errorId = useId();
   const controls = Children.map(children, child => {
-    if (!isValidElement<{ "aria-invalid"?: boolean; "aria-describedby"?: string }>(child)) return child;
+    if (!isValidElement<{ "aria-invalid"?: boolean; "aria-describedby"?: string; "aria-label"?: string }>(child)) return child;
     if (child.type !== "input" && child.type !== "select" && child.type !== "textarea" && child.type !== RecentInput) return child;
-    return cloneElement(child, { "aria-invalid": !!error, "aria-describedby": error ? errorId : undefined });
+    return cloneElement(child, { "aria-label": child.props["aria-label"] || label, "aria-invalid": !!error, "aria-describedby": error ? errorId : undefined });
   });
   return <label className={"field" + (error ? " invalid-field" : "")} data-field={fieldKey}>
     <span>{label}</span>{controls}
@@ -1063,7 +1063,6 @@ export function App() {
               <section className="card">
                 <h2>Identificação e análise</h2>
                 {loadingAttempt && <ValidationNotice errors={loadingIssues.map(i => i.message)} focus={() => focusValidation(loadingIssues)} />}
-                {products.some(p=>p.id!==productEditingId && p.code.trim().toLowerCase()===productForm.code.trim().toLowerCase()) && <div className="validation-notice" role="alert"><p>Este código já pertence a um produto cadastrado.</p><button onClick={()=>{const existing=products.find(p=>p.code.trim().toLowerCase()===productForm.code.trim().toLowerCase());if(existing){setProductEditingId(existing.id);setProductForm({code:existing.code,name:existing.name,family:existing.family,specifications:existing.specifications.map(s=>({...s}))});}}}>Abrir / editar produto existente</button></div>}
                 <div className="form-grid">
                   <Field fieldKey="cycle_id" error={loadingError("cycle_id")} label="Ciclo de tanque">
                     <select
@@ -1082,7 +1081,7 @@ export function App() {
                       }}
                     >
                       <option value={0}>Selecione</option>
-                      {(newLoading ? activeCycles : cycles).map((c) => (
+                      {(newLoading ? activeCycles.filter(c=>products.find(p=>p.id===c.product_id)?.active) : cycles).map((c) => (
                         <option key={c.id} value={c.id}>
                           {tankFor(c)?.code} · {productFor(c)?.name} · Ciclo de tanque{" "}
                           {c.id}
@@ -1640,6 +1639,8 @@ export function App() {
             <div className="two-col">
               <section className="card">
                 <h2>{productEditingId ? "Editar produto · nova versão" : "Produto e especificação"}</h2>
+                {products.some(p=>p.id!==productEditingId && p.code.trim().toLowerCase()===productForm.code.trim().toLowerCase()) && <div className="validation-notice" role="alert"><p>Este código já pertence a um produto cadastrado.</p><button onClick={()=>{const existing=products.find(p=>p.code.trim().toLowerCase()===productForm.code.trim().toLowerCase());if(existing){setProductEditingId(existing.id);setProductForm({code:existing.code,name:existing.name,family:existing.family,specifications:existing.specifications.map(s=>({...s}))});}}}>Abrir / editar produto existente</button></div>}
+
                 <div className="form-grid">
                   <Field label="Código">
                     <input
@@ -1804,6 +1805,7 @@ export function App() {
                     {productEditingId ? "Salvar nova versão" : "Salvar produto"}
                   </button>
                 </div>
+                {productEditingId&&<button className="text-button" disabled={busy} onClick={()=>{setProductEditingId(null);setProductForm({code:"",name:"",family:"Resina",specifications:[emptySpec()]});}}>Cancelar edição / novo produto</button>}
                 <hr />
                 <ProductList products={products} versions={versions} busy={busy}
                   edit={p=>{setProductEditingId(p.id);setProductForm({code:p.code,name:p.name,family:p.family,specifications:p.specifications.map(s=>({...s}))});window.scrollTo({top:0,behavior:"smooth"});}}
