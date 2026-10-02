@@ -695,14 +695,7 @@ begin
     if s ? 'qual' then
       if not exists (select 1 from jsonb_array_elements_text(s->'qual') allowed where allowed = v) then abnormal := true; end if;
     else
-      if v !~* '^[+-]?([0-9]+([.,][0-9]*)?|[.,][0-9]+)(e[+-]?[0-9]+)?
-      exception when invalid_text_representation then raise exception 'Resultado numérico inválido: %', s->>'name'; end;
-      if (s ? 'min' and n < (s->>'min')::numeric) or (s ? 'max' and n > (s->>'max')::numeric) then abnormal := true; end if;
-    end if;
-  end loop;
-  return abnormal;
-end $function$
- then
+      if v !~* '^[+-]?([0-9]+([.,][0-9]*)?|[.,][0-9]+)(e[+-]?[0-9]+)?$' then
         raise exception 'Resultado numérico inválido: %', s->>'name';
       end if;
       begin n := replace(v,',','.')::numeric;
