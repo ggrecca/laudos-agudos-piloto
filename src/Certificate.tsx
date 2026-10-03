@@ -34,14 +34,13 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
     <div className="cert-grid">
       <span>Produto / código<strong>{product?.name || "Não disponível"} · {product?.code || "—"}</strong></span>
       <span>Família<strong>{product?.family || "—"}</strong></span>
-      <span>Especificação<strong>Versão {cycle?.specification_version ?? "—"}</strong></span>
       <span>Tanque / Ciclo de tanque<strong>{tank?.code || "—"} · Ciclo de tanque {loading.cycle_id}</strong></span>
       <span>Lotes<strong>{cycle?.lots || "—"}</strong></span>
       <span>Fabricação<strong>{date(cycle?.manufactured_at ?? null)}</strong></span>
       <span>Placa / carreta<strong>{loading.plate} · {loading.trailer}</strong></span>
       <span>Unidade / destino<strong>{loading.destination}</strong></span>
       <span>Transportadora<strong>{loading.carrier}</strong></span>
-      <span>Carregamento<strong>{date(loading.loaded_at)}</strong></span>
+      <span>Carregamento<strong>{new Date(loading.loaded_at).toLocaleDateString("pt-BR")}</strong></span>
       <span>Emissão<strong>{date(loading.issued_at)}</strong></span>
       <span>Origem dos resultados<strong>{loading.source === "ref" ? "Análises de referência do Ciclo de tanque" : "Análises do caminhão"}</strong></span>
     </div>
@@ -61,7 +60,7 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
         <div><dt>{loading.source === "ref" ? "Responsável pelas análises de referência" : "Responsável pelas análises do caminhão"}</dt>
           <dd>{loading.source === "ref" ? cycle?.analyst || "Não informado" : loading.analyst}</dd></div>
         {loading.source === "ref" && <div><dt>Responsável informado no carregamento</dt><dd>{loading.analyst}</dd></div>}
-        <div><dt>Emissão do laudo</dt><dd>{trace ? trace.issuer.name + (trace.issuer.role ? " · " + roleLabel(trace.issuer.role) : "") : "Identificação pendente de consulta"}</dd></div>
+        <div><dt>Emissão do laudo</dt><dd>{trace ? trace.issuer.name : "Identificação pendente de consulta"}</dd></div>
       </dl>
     </section>
     <section className="cert-authorizations">

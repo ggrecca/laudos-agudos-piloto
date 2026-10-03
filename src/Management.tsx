@@ -96,10 +96,10 @@ export function CycleHistory({cycles,tanks,products,loadings,requests,db,run,bus
  const filtered=cycles.filter(c=>(status==="all"||c.status===status)&&(tank==="all"||c.tank_id===Number(tank))&&(product==="all"||c.product_id===Number(product))&&(!from||c.manufactured_at.slice(0,10)>=from)&&(!to||c.manufactured_at.slice(0,10)<=to)&&[c.id,c.lots,tankFor(c)?.code,productFor(c)].join(" ").toLowerCase().includes(query.toLowerCase()));
  useEffect(()=>{if(initialId)setSelected(initialId)},[initialId]);
  const current=cycles.find(c=>c.id===selected);
- function actions(c:Cycle,compact=false){
+ function actions(c:Cycle,compact=false,showConsult=true){
  const dependencies=loadings.filter(l=>l.cycle_id===c.id),pending=requests.some(r=>r.cycle_id===c.id&&r.decision==="pending");
  const secondary=<>
- <button type="button" className={compact?"cycle-action icon-button":undefined} aria-label="Consultar" title="Consultar ciclo de tanque" onClick={()=>setSelected(c.id)}>{compact?<Eye size={16} aria-hidden="true"/>:"Consultar"}</button>
+ {showConsult&&<button type="button" className={compact?"cycle-action icon-button":undefined} aria-label="Consultar" title="Consultar ciclo de tanque" onClick={()=>setSelected(c.id)}>{compact?<Eye size={16} aria-hidden="true"/>:"Consultar"}</button>}
  {c.active&&canCancel&&<CancellationButton kind="cancel_cycle" id={c.id} requests={requests} db={db} run={run} busy={busy} disabled={dependencies.length>0} compact={compact}/>}
  </>;
  return <div className={"actions"+(compact?" cycle-card-actions":"")}>
@@ -122,7 +122,7 @@ export function CycleHistory({cycles,tanks,products,loadings,requests,db,run,bus
  <h3>Histórico e vínculos</h3><p>Cadastro: {date(current.created_at)} · encerramento: {date(current.closed_at)}</p>
  {requests.filter(r=>r.cycle_id===current.id).map(r=><p key={r.id}>Solicitado por {r.requester_name||"Não registrado"} · {date(r.requested_at)} · {r.reason}<br/>{decisionLabel(r.decision)} · {r.actor_name||"—"} · {date(r.decided_at)} · {r.decision_reason||"—"}</p>)}
  {loadings.filter(l=>l.cycle_id===current.id).map(l=><p key={l.id}>Carregamento #{l.id} · {l.plate} · {l.destination} · {l.state} · {l.certificate_number||"Sem laudo"}</p>)}
- {actions(current)}</section></div>}</>;
+ {current.active&&actions(current,false,false)}</section></div>}</>;
 }
 // The existing RecentInput is used in the product form, including historical analysis names and units.
 export { RecentInput };
