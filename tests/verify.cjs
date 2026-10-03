@@ -230,7 +230,7 @@ let browser,lastPage;
  await page.getByRole("button",{name:"Emitir laudo",exact:true}).click();
  await page.locator(".certificate").waitFor();
  const issuer=page.locator(".cert-responsibles dl > div").filter({has:page.locator("dt",{hasText:"Emissão do laudo"})}).locator("dd");
- await issuer.getByText("operador",{exact:true}).waitFor();assert.equal(await issuer.innerText(),"operador");
+ await issuer.getByText("Operador atualizado",{exact:true}).waitFor();assert.equal(await issuer.innerText(),"Operador atualizado");
  const certFields=await page.locator(".cert-grid > span").allTextContents();
  assert.ok(!certFields.some(field=>field.startsWith("Especificação")));
  assert.match(certFields.find(field=>field.startsWith("Carregamento")),/^Carregamento\d{2}\/\d{2}\/\d{4}$/);
