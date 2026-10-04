@@ -1200,15 +1200,16 @@ dialog.help-dialog .manual-index button.manual-topic:hover { background: #e3efe7
 /* Mobile-only enhancements. Desktop and print rules above remain unchanged. */
 @media screen and (max-width: 900px) {
   html { scroll-padding-top: 100px; }
-  .shell { display: block; }
-  .sidebar { width: 100%; height: auto; position: sticky; top: 0; z-index: 15; box-shadow: 0 3px 12px #15392d20; }
-  .sidebar .brand { display: grid; grid-template-columns: 80px minmax(0, 1fr) 44px; align-items: center; gap: 12px; padding: 12px 16px; }
+  .shell { display: block; padding-top: 72px; }
+  .sidebar { width: 100%; height: auto; position: fixed; top: 0; left: 0; z-index: 15; box-shadow: 0 3px 12px #15392d20; }
+  .sidebar .brand { display: grid; grid-template-columns: 80px minmax(0, 1fr) 44px; align-items: center; gap: 12px; padding: 12px 16px; min-height: 72px; }
   .sidebar .brand-logo { width: 80px; }
   .sidebar .brand strong { font-size: 12px; line-height: 1.35; }
   .sidebar .brand small { font-size: 11px; }
   .sidebar button.mobile-menu-toggle { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid #507562; border-radius: 9px; background: #244d3b; color: white; }
   .sidebar nav, .sidebar .account { display: none; }
   .sidebar.mobile-menu-open { max-height: 100dvh; overflow-y: auto; overscroll-behavior: contain; }
+  body:has(.mobile-menu-open) { overflow: hidden; }
   .sidebar.mobile-menu-open nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 0 12px 12px; overflow: visible; }
   .sidebar nav button, .sidebar nav button:not(.active) { justify-content: flex-start; font-size: 13px; white-space: normal; gap: 9px; padding: 12px 10px; text-align: left; min-height: 48px; }
   .sidebar nav button svg { width: 18px; height: 18px; flex: none; }
@@ -1239,6 +1240,13 @@ dialog.help-dialog .manual-index button.manual-topic:hover { background: #e3efe7
   .recent-options li { min-height: 44px; display: flex; align-items: center; padding: 11px 12px; overflow-wrap: anywhere; font-size: 15px; touch-action: pan-y; }
   .two-col { grid-template-columns: minmax(0, 1fr); }
   .action-column { position: static; }
+  .main:has(> .certificate) { display: flex; flex-direction: column; }
+  .main:has(> .certificate) > .two-col { order: 1; }
+  .mobile-certificate-actions { margin-bottom: 18px; }
+  .mobile-certificate-actions button { width: 100%; }
+  .main:has(> .certificate) .certificate-print-action { display: none !important; }
+  details.loading-data > summary { cursor: pointer; font-weight: 700; color: #285340; min-height: 44px; display: list-item; padding: 10px 0; }
+  details.loading-data[open] > summary { margin-bottom: 18px; }
   .action-column .authorization-reasons { max-height: none; }
   .mobile-loading-actions { position: fixed; bottom: 0; left: 0; right: 0; z-index: 16; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: #fff; border-top: 1px solid #d5e2d9; box-shadow: 0 -4px 20px #15392d15; }
   .mobile-loading-actions button { padding: 10px 8px !important; font-size: 13px; }

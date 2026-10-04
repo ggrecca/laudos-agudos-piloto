@@ -893,6 +893,7 @@ export function App() {
     ),
   ].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
+  const LoadingData = mobileLayout && current?.certificate_number ? "details" : "section";
   return (
     <>
     <div className="shell">
@@ -1092,8 +1093,12 @@ export function App() {
               </div>
               {current && <Pill state={stateFor(current)} />}
             </div>
+            {mobileLayout && current?.certificate_number && <div className="mobile-certificate-actions">
+              <button type="button" className="primary" disabled={!canPrintCertificate} onClick={() => window.print()}>Imprimir laudo</button>
+            </div>}
             <div className="two-col">
-              <section className="card">
+              <LoadingData className="card loading-data">
+                {mobileLayout && current?.certificate_number && <summary>Dados do carregamento</summary>}
                 <h2>Identificação e análise</h2>
                 {loadingAttempt && <ValidationNotice errors={loadingIssues.map(i => i.message)} focus={() => focusValidation(loadingIssues)} />}
                 <div className="form-grid">
@@ -1205,7 +1210,7 @@ export function App() {
                     value={loadingForm.observation} options={suggestions("observation")}
                     onChange={observation => setLoadingForm(f => ({ ...f, observation }))} />
                 </Field>
-              </section>
+              </LoadingData>
               <aside className="action-column">
                 <section className="card">
                   <h2>Próxima ação</h2>
@@ -1244,7 +1249,7 @@ export function App() {
                   )}
                   {current?.state === "Emitido" && can(permissions,"cancellations.request") && <CancellationButton kind="cancel_certificate" id={current.id} requests={requests} db={db} run={run} busy={busy}/>}
                   {current?.certificate_number && (
-                    <button disabled={!canPrintCertificate} onClick={() => window.print()}>
+                    <button className="certificate-print-action" disabled={!canPrintCertificate} onClick={() => window.print()}>
                       Imprimir laudo
                     </button>
                   )}

@@ -9,6 +9,9 @@ module.exports=async function mobileFlows({browser,users,password,sql,record,con
  const noOverflow=async()=>assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  try{
   await login('operador');await noOverflow();
+  await page.evaluate(()=>window.scrollTo(0,400));
+  const menuBox=await page.getByRole('button',{name:'Abrir menu',exact:true}).boundingBox();assert.ok(menuBox.y>=0&&menuBox.y+menuBox.height<=100);
+  await page.evaluate(()=>window.scrollTo(0,0));
   assert.equal(await page.locator('.sidebar nav').isVisible(),false);
   await page.getByRole('button',{name:'Abrir menu',exact:true}).tap();await page.getByRole('button',{name:'Sair',exact:true}).waitFor();
   await page.keyboard.press('Escape');assert.equal(await page.locator('.sidebar nav').isVisible(),false);
@@ -35,6 +38,10 @@ module.exports=async function mobileFlows({browser,users,password,sql,record,con
   assert.equal(sql("select state from public.pilot_loadings where plate='MOB1234'"),'Rascunho');
   await bar.getByRole('button',{name:'Emitir laudo',exact:true}).tap();await page.locator('.certificate').waitFor();
   assert.equal(sql("select state from public.pilot_loadings where plate='MOB1234'"),'Emitido');await noOverflow();
+  assert.equal(await page.locator('details.loading-data').getAttribute('open'),null);
+  assert.ok((await page.locator('.certificate').boundingBox()).y<(await page.locator('.two-col').boundingBox()).y);
+  await page.locator('details.loading-data > summary').tap();assert.notEqual(await page.locator('details.loading-data').getAttribute('open'),null);
+  await page.locator('details.loading-data > summary').tap();await page.evaluate(()=>window.scrollTo(0,0));
   assert.equal(await page.locator('.certificate table').evaluate(el=>getComputedStyle(el).display),'block');
   await page.screenshot({path:'test-results/mobile-issued-certificate-390.png',fullPage:true});
   await nav('Ciclos de tanques');await card.getByRole('button',{name:'Novo carregamento',exact:true}).tap();

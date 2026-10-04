@@ -84,7 +84,14 @@ async function capture(page,name,width){
     if(!a.equals(b)){console.log('DESKTOP_BEFORE:'+(await before.page.screenshot({type:'jpeg',quality:65})).toString('base64'));console.log('DESKTOP_AFTER:'+(await after.page.screenshot({type:'jpeg',quality:65})).toString('base64'));}
     assert.ok(a.equals(b),'desktop pixels changed '+name+' '+width);
    }
-   await before.context.close();await after.context.close();console.log('DESKTOP PIXEL IDENTICAL',width,'all 7 screens');
+   for(const fixture of [before,after]){await nav(fixture.page,'Ciclos de tanques');await fixture.page.locator('.card-grid').getByRole('button',{name:'Novo carregamento',exact:true}).click();}
+   for(const name of ['form','certificate','manual']){
+    if(name==='certificate')for(const fixture of [before,after]){await nav(fixture.page,'Laudos');await fixture.page.locator('tbody tr').filter({hasText:loading.certificate_number}).click();await fixture.page.locator('.cert-responsibles').getByText('Ana',{exact:true}).waitFor();}
+    if(name==='manual')for(const fixture of [before,after]){await fixture.page.locator('.sidebar nav').getByRole('button',{name:'Ajuda',exact:true}).click();await fixture.page.getByRole('dialog',{name:'Manual operacional'}).waitFor();}
+    await capture(before.page,'desktop-before-'+name,width);await capture(after.page,'desktop-after-'+name,width);
+    assert.ok(fs.readFileSync(out+'/desktop-before-'+name+'-'+width+'.png').equals(fs.readFileSync(out+'/desktop-after-'+name+'-'+width+'.png')),'desktop pixels changed '+name+' '+width);
+   }
+   await before.context.close();await after.context.close();console.log('DESKTOP PIXEL IDENTICAL',width,'all 7 screens, loading form, certificate and manual');
   }
   for(const width of [320,375,390,430,768,900]){
    const {context,page,errors}=await fixture(browser,5175,width);
