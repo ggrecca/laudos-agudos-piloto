@@ -42,6 +42,12 @@ module.exports=async function mobileFlows({browser,users,password,sql,record,con
   assert.ok((await page.locator('.certificate').boundingBox()).y<(await page.locator('.two-col').boundingBox()).y);
   await page.locator('details.loading-data > summary').tap();assert.notEqual(await page.locator('details.loading-data').getAttribute('open'),null);
   await page.locator('details.loading-data > summary').tap();await page.evaluate(()=>window.scrollTo(0,0));
+  await page.emulateMedia({media:'print'});
+  assert.equal(await page.locator('.mobile-certificate-actions').isVisible(),false);
+  assert.equal(await page.locator('.two-col').isVisible(),false);
+  assert.equal(await page.locator('.certificate table').evaluate(el=>getComputedStyle(el).display),'table');
+  await page.pdf({path:'test-results/mobile-issued-certificate.pdf',format:'A4',printBackground:true});
+  await page.emulateMedia({media:'screen'});
   assert.equal(await page.locator('.certificate table').evaluate(el=>getComputedStyle(el).display),'block');
   await page.screenshot({path:'test-results/mobile-issued-certificate-390.png',fullPage:true});
   await nav('Ciclos de tanques');await card.getByRole('button',{name:'Novo carregamento',exact:true}).tap();

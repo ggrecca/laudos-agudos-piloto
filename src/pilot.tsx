@@ -1093,7 +1093,7 @@ export function App() {
               </div>
               {current && <Pill state={stateFor(current)} />}
             </div>
-            {mobileLayout && current?.certificate_number && <div className="mobile-certificate-actions">
+            {mobileLayout && current?.certificate_number && <div className="mobile-certificate-actions no-print">
               <button type="button" className="primary" disabled={!canPrintCertificate} onClick={() => window.print()}>Imprimir laudo</button>
             </div>}
             <div className="two-col">
@@ -1260,7 +1260,7 @@ export function App() {
                 </section>
               </aside>
             </div>
-            {mobileLayout && (newLoading || editLoading) && <div className="mobile-loading-actions" aria-label="Ações do carregamento">
+            {mobileLayout && (newLoading || editLoading) && <div className="mobile-loading-actions no-print" aria-label="Ações do carregamento">
               <button type="button" disabled={busy} onClick={() => submitLoading("draft")}>Salvar rascunho</button>
               <button type="button" className="primary" disabled={busy} onClick={() => submitLoading(needsFormApproval ? "request" : "issue")}>
                 {needsFormApproval ? "Solicitar autorização" : "Emitir laudo"}
