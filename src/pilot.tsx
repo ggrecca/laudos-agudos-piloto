@@ -13,6 +13,7 @@ import {
   FileCheck2,
   FlaskConical,
   LogOut,
+  Menu,
   Plus,
   Pencil,
   ShieldCheck,
@@ -268,6 +269,9 @@ export function App() {
   const [productEditingId, setProductEditingId] = useState<number | null>(null);
   const [view, setView] = useState<View>("Início");
   const [manualOpen, setManualOpen] = useState(false);
+  const [mobileLayout, setMobileLayout] = useState(() => window.matchMedia("(max-width: 900px)").matches);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuToggle = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [noticeTone, setNoticeTone] = useState<"error" | "success" | "info">("info");
@@ -312,6 +316,20 @@ export function App() {
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const update = () => { setMobileLayout(media.matches); if (!media.matches) setMobileMenuOpen(false); };
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setMobileMenuOpen(false); mobileMenuToggle.current?.focus(); }
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [mobileMenuOpen]);
   useEffect(() => {
     db.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: listener } = db.auth.onAuthStateChange((_event, next) =>
@@ -585,6 +603,7 @@ export function App() {
   }
   function navigateTo(nextView: View) {
     if (showLoading && !confirmLeaveLoading()) return;
+    setMobileMenuOpen(false);
     if (nextView !== "Início") markOnboardingSeen();
     setView(nextView);
     requestAnimationFrame(()=>window.scrollTo({top:0}));
@@ -877,7 +896,7 @@ export function App() {
   return (
     <>
     <div className="shell">
-      <aside className="sidebar">
+      <aside className={"sidebar" + (mobileLayout && mobileMenuOpen ? " mobile-menu-open" : "")}>
         <div className="brand">
           <img
             className="brand-logo"
@@ -890,8 +909,13 @@ export function App() {
             <strong>Fábricas Químicas - Agudos</strong>
             <small>Laudos de qualidade</small>
           </div>
+          {mobileLayout && <button ref={mobileMenuToggle} type="button" className="mobile-menu-toggle"
+            aria-label={mobileMenuOpen ? "Fechar menu" : "Abrir menu"} aria-expanded={mobileMenuOpen} aria-controls="primary-navigation"
+            onClick={() => setMobileMenuOpen(open => !open)}>
+            {mobileMenuOpen ? <X size={22} aria-hidden="true" /> : <Menu size={22} aria-hidden="true" />}
+          </button>}
         </div>
-        <nav>
+        <nav id="primary-navigation">
           {views
             .filter(
               (v) =>
@@ -918,12 +942,12 @@ export function App() {
                 </button>
               );
             })}
-          <button type="button" className="help-nav" aria-label="Ajuda" title="Manual operacional" onClick={() => setManualOpen(true)}><CircleHelp size={18} aria-hidden="true" /> Ajuda</button>
+          <button type="button" className="help-nav" aria-label="Ajuda" title="Manual operacional" onClick={() => { setMobileMenuOpen(false); setManualOpen(true); }}><CircleHelp size={18} aria-hidden="true" /> Ajuda</button>
         </nav>
         <div className="account">
           <strong>{profile.name || session.user.email}</strong>
           <small>{roleLabel(profile.role)}</small>
-          <button onClick={() => db.auth.signOut()}>
+          <button onClick={() => { setMobileMenuOpen(false); db.auth.signOut(); }}>
             <LogOut size={16} /> Sair
           </button>
         </div>
@@ -1190,8 +1214,8 @@ export function App() {
                   {loadingAttempt && <ValidationNotice errors={loadingIssues.map(i => i.message)} focus={() => focusValidation(loadingIssues)} />}
                   {(newLoading || editLoading) && (
                     <>
-                      <button disabled={busy} onClick={() => submitLoading("draft")}>Salvar rascunho</button>
-                      <button className="primary" disabled={busy}
+                      <button className="loading-submit-action" disabled={busy} onClick={() => submitLoading("draft")}>Salvar rascunho</button>
+                      <button className="primary loading-submit-action" disabled={busy}
                         onClick={() => submitLoading(needsFormApproval ? "request" : "issue")}>
                         {needsFormApproval ? "Solicitar autorização" : "Emitir laudo"}
                       </button>
@@ -1231,6 +1255,12 @@ export function App() {
                 </section>
               </aside>
             </div>
+            {mobileLayout && (newLoading || editLoading) && <div className="mobile-loading-actions" aria-label="Ações do carregamento">
+              <button type="button" disabled={busy} onClick={() => submitLoading("draft")}>Salvar rascunho</button>
+              <button type="button" className="primary" disabled={busy} onClick={() => submitLoading(needsFormApproval ? "request" : "issue")}>
+                {needsFormApproval ? "Solicitar autorização" : "Emitir laudo"}
+              </button>
+            </div>}
             {current?.certificate_number && (
               <Certificate loading={current} cycle={currentCycle} product={productFor(currentCycle)} tank={tankFor(currentCycle)}
                 cancellation={requests.find(r=>r.loading_id===current.id&&r.kind==="cancel_certificate"&&r.decision==="approved")} trace={traceForCurrent} traceError={certificateTraceError} retry={() => setTraceRetry(n => n + 1)} />
@@ -2032,7 +2062,7 @@ function LoadingTable({
 }) {
   return (
     <div className="table-wrap">
-      <table>
+      <table className="mobile-record-table loading-record-table">
         <thead>
           <tr>
             <th>Registro</th>
@@ -2057,20 +2087,20 @@ function LoadingTable({
                 }
               }}
             >
-              <td>
+              <td data-label="Registro">
                 <strong>
                   {l.certificate_number ||
                     `CAR-${String(l.id).padStart(4, "0")}`}
                 </strong>
               </td>
-              <td>{l.plate}</td>
-              <td>{productFor(cycleFor(l))?.name || "—"}</td>
-              <td>{l.destination}</td>
-              <td>{date(l.loaded_at)}</td>
-              <td>
+              <td data-label="Placa">{l.plate}</td>
+              <td data-label="Produto">{productFor(cycleFor(l))?.name || "—"}</td>
+              <td data-label="Destino">{l.destination}</td>
+              <td data-label="Data">{date(l.loaded_at)}</td>
+              <td data-label="Situação">
                 <Pill state={stateFor(l)} />
               </td>
-              <td>
+              <td data-label="Ações">
                 <button
                   type="button"
                   className="table-action"

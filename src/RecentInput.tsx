@@ -44,7 +44,8 @@ export function RecentInput({ label, value, options, onChange, disabled, placeho
     {multiline ? <textarea {...props} /> : <input {...props} />}
     {shown && <ul className="recent-options" id={id} role="listbox" aria-label={"Valores recentes de " + label}>
       {choices.map((v, i) => <li key={v} role="option" id={id + "-" + i} aria-selected={active === i}
-        className={active === i ? "selected" : ""} onMouseDown={e => e.preventDefault()} onClick={() => choose(v)}>{v}</li>)}
+        className={active === i ? "selected" : ""} onMouseDown={e => e.preventDefault()}
+        onPointerDown={e => { if (e.pointerType === "touch") e.preventDefault(); }} onClick={() => choose(v)}>{v}</li>)}
     </ul>}
   </div>;
 }

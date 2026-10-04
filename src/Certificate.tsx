@@ -46,11 +46,11 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
     </div>
     <h3>Resultados e situação por variável</h3>
     <div className="table-wrap">
-      <table>
+      <table className="mobile-record-table analysis-record-table">
         <thead><tr><th>Análise</th><th>Unidade</th><th>Resultado</th><th>Especificação</th><th>Situação</th></tr></thead>
         <tbody>{rows.map(({ spec, value, result }, i) => <tr key={i}>
-          <td>{spec.name}</td><td>{spec.unit || "—"}</td><td>{value.trim() || "—"}</td><td>{result.expected}</td>
-          <td><span className={"result-state " + result.status}>{result.label}</span></td>
+          <td data-label="Análise">{spec.name}</td><td data-label="Unidade">{spec.unit || "—"}</td><td data-label="Resultado">{value.trim() || "—"}</td><td data-label="Especificação">{result.expected}</td>
+          <td data-label="Situação"><span className={"result-state " + result.status}>{result.label}</span></td>
         </tr>)}</tbody>
       </table>
     </div>
