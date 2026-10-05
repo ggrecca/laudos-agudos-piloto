@@ -106,10 +106,17 @@ async function capture(page,name,width){
     if(name==='form')await after.page.locator('.tank-loading-summary').evaluate(el=>{el.style.display='none'});
     if(name==='certificate')await before.page.locator('.cert-conclusion').evaluate(el=>el.remove());
     if(name==='manual')await before.page.locator('.manual-header small').evaluate(el=>{el.textContent=el.textContent.replace('02/10/2026','05/10/2026')});
+    if(name==='form'||name==='certificate'){
+     const oldBox=await before.page.locator('.action-column').boundingBox(),newBox=await after.page.locator('.action-column').boundingBox();
+     for(const key of ['x','y','width','height'])assert.ok(Math.abs(oldBox[key]-newBox[key])<0.1,'Action panel geometry changed '+key);
+     // The requested bounded scroll container clips the card's shadow. Normalize that containment
+     // in the baseline; actual sticky, tall content and keyboard focus are verified by real flows.
+     await before.page.locator('.action-column').evaluate(el=>Object.assign(el.style,{alignSelf:'start',maxHeight:'calc(100dvh - 32px)',overflowY:'auto',overscrollBehavior:'contain',scrollbarWidth:'thin'}));
+    }
     await capture(before.page,'desktop-before-'+name,width);await capture(after.page,'desktop-after-'+name,width);
     assert.ok(fs.readFileSync(out+'/desktop-before-'+name+'-'+width+'.png').equals(fs.readFileSync(out+'/desktop-after-'+name+'-'+width+'.png')),'desktop pixels changed '+name+' '+width);
    }
-   await before.context.close();await after.context.close();console.log('DESKTOP PIXEL IDENTICAL',width,'all 7 screens; tank sticky/form/certificate/manual normalized only for requested changes');
+   await before.context.close();await after.context.close();console.log('DESKTOP PIXEL IDENTICAL',width,'all 7 screens; panel sticky/containment/form/certificate/manual normalized only for requested changes');
   }
   for(const width of [320,375,390,430,768,900]){
    const {context,page,errors}=await fixture(browser,5175,width);
