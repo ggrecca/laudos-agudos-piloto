@@ -105,7 +105,7 @@ async function capture(page,name,width){
     // Normalize only the explicitly requested additions/removal/date; all remaining pixels must match production.
     if(name==='form')await after.page.locator('.tank-loading-summary').evaluate(el=>{el.style.display='none'});
     if(name==='certificate')await before.page.locator('.cert-conclusion').evaluate(el=>el.remove());
-    if(name==='manual')await before.page.locator('.manual-header small').evaluate(el=>{el.textContent=el.textContent.replace('02/10/2026','05/10/2026')});
+    if(name==='manual')await before.page.locator('.manual-header small').evaluate(el=>{for(const node of el.childNodes)if(node.nodeType===Node.TEXT_NODE)node.textContent=node.textContent.replace('02/10/2026','05/10/2026')});
     if(name==='form'||name==='certificate'){
      const oldBox=await before.page.locator('.action-column').boundingBox(),newBox=await after.page.locator('.action-column').boundingBox();
      for(const key of ['x','y','width','height'])assert.ok(Math.abs(oldBox[key]-newBox[key])<0.1,'Action panel geometry changed '+key);
