@@ -1157,7 +1157,7 @@ export function App() {
                       ))}
                     </select>
                   </Field>
-                  {selectedFormCycle && <TankLoadingSummary cycle={selectedFormCycle} product={productFor(selectedFormCycle)} tank={tankFor(selectedFormCycle)} showAge={newLoading || !!editLoading} />}
+                  {selectedFormCycle && (newLoading || editLoading) && <TankLoadingSummary cycle={selectedFormCycle} product={productFor(selectedFormCycle)} tank={tankFor(selectedFormCycle)} showAge={newLoading || !!editLoading} />}
                   <Field fieldKey="loaded_at" error={loadingError("loaded_at")} label="Data e hora">
                     <input
                       type="datetime-local"
