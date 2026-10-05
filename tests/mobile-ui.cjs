@@ -86,10 +86,13 @@ async function capture(page,name,width){
      const oldBox=await before.page.locator('.tank-management').boundingBox(),newBox=await panel.boundingBox();
      for(const key of ['x','y','width','height'])assert.ok(Math.abs(oldBox[key]-newBox[key])<0.1,'Tank panel geometry changed '+key);
      assert.equal(await panel.evaluate(el=>getComputedStyle(el).position),'sticky');
+     // Exercise a long operational list: sticky remains bounded by its grid row.
+     await after.page.locator('.two-col > .card').first().evaluate(el=>{const extra=document.createElement('p');extra.id='test-long-product-list';extra.style.height='600px';extra.textContent='Lista operacional longa de verificação';el.append(extra)});
      await after.page.setViewportSize({width,height:650});
      await after.page.evaluate(()=>window.scrollTo(0,250));
      await after.page.waitForTimeout(100);
      assert.ok(Math.abs((await panel.boundingBox()).y-16)<=2,'Tank management must stick at the top');
+     await after.page.locator('#test-long-product-list').evaluate(el=>el.remove());
      await after.page.setViewportSize({width,height:900});await after.page.evaluate(()=>window.scrollTo(0,0));
      await before.page.locator('.tank-management').evaluate(el=>Object.assign(el.style,{position:'sticky',top:'16px',alignSelf:'start',maxHeight:'calc(100dvh - 32px)',overflowY:'auto',overscrollBehavior:'contain',scrollbarWidth:'thin'}));
     }
