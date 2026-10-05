@@ -79,6 +79,20 @@ async function capture(page,name,width){
    const before=await fixture(browser,5176,width),after=await fixture(browser,5175,width);
    for(const name of ['Início','Ciclos de tanques','Carregamentos','Autorizações','Laudos','Cadastros','Usuários']){
     await nav(before.page,name);await nav(after.page,name);
+    if(name==='Cadastros'){
+     // Sticky changes Chromium's text compositing. Verify geometry and scroll behavior first,
+     // then give the baseline only the requested sticky behavior for exact pixel comparison.
+     const panel=after.page.locator('.tank-management');
+     const oldBox=await before.page.locator('.tank-management').boundingBox(),newBox=await panel.boundingBox();
+     for(const key of ['x','y','width','height'])assert.ok(Math.abs(oldBox[key]-newBox[key])<0.1,'Tank panel geometry changed '+key);
+     assert.equal(await panel.evaluate(el=>getComputedStyle(el).position),'sticky');
+     await after.page.setViewportSize({width,height:650});
+     await after.page.evaluate(()=>window.scrollTo(0,250));
+     await after.page.waitForTimeout(100);
+     assert.ok(Math.abs((await panel.boundingBox()).y-16)<=2,'Tank management must stick at the top');
+     await after.page.setViewportSize({width,height:900});await after.page.evaluate(()=>window.scrollTo(0,0));
+     await before.page.locator('.tank-management').evaluate(el=>Object.assign(el.style,{position:'sticky',top:'16px',alignSelf:'start',maxHeight:'calc(100dvh - 32px)',overflowY:'auto',overscrollBehavior:'contain',scrollbarWidth:'thin'}));
+    }
     await capture(before.page,'desktop-before-'+name,width);await capture(after.page,'desktop-after-'+name,width);
     const a=fs.readFileSync(out+'/desktop-before-'+name+'-'+width+'.png'),b=fs.readFileSync(out+'/desktop-after-'+name+'-'+width+'.png');
     if(!a.equals(b)){console.log('DESKTOP_BEFORE:'+(await before.page.screenshot({type:'jpeg',quality:65})).toString('base64'));console.log('DESKTOP_AFTER:'+(await after.page.screenshot({type:'jpeg',quality:65})).toString('base64'));}
@@ -95,7 +109,7 @@ async function capture(page,name,width){
     await capture(before.page,'desktop-before-'+name,width);await capture(after.page,'desktop-after-'+name,width);
     assert.ok(fs.readFileSync(out+'/desktop-before-'+name+'-'+width+'.png').equals(fs.readFileSync(out+'/desktop-after-'+name+'-'+width+'.png')),'desktop pixels changed '+name+' '+width);
    }
-   await before.context.close();await after.context.close();console.log('DESKTOP PIXEL IDENTICAL',width,'all 7 screens; form/certificate/manual normalized only for requested changes');
+   await before.context.close();await after.context.close();console.log('DESKTOP PIXEL IDENTICAL',width,'all 7 screens; tank sticky/form/certificate/manual normalized only for requested changes');
   }
   for(const width of [320,375,390,430,768,900]){
    const {context,page,errors}=await fixture(browser,5175,width);
