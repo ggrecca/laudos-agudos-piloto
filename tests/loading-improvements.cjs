@@ -33,6 +33,10 @@ module.exports=async function({browser,users,password,sql,record,rpc,denied,root
  const save=(id,a)=>{const copy={...a};delete copy.p_cycle_id;return rpc(operator,'pilot_save_loading',{p_id:id,...copy})};
  const destinations=(await operator.from('pilot_destinations').select('*')).data;
  assert.equal(destinations.filter(d=>!d.reference_reuse_requires_approval).length,3);
+ assert.ok((await operator.from('pilot_destinations').update({reference_reuse_requires_approval:false}).eq('id','uberaba-mdf')).error,'Operators cannot change the trusted destination rule');
+ const sample={id:1,state:'Aguardando autorização',edit_version:1,source:'ref',destination_id:'agudos-mdf1',values:['7','Límpido']};
+ assert.equal(flow.effectiveLoadingState(sample,specs,[],destinations),'Autorizado para emissão');
+ assert.equal(flow.authorizationNeeds({...sample,values:['9','Límpido']},specs,[],destinations).exception,true);
  for(const [i,d] of ['agudos-mdf1','agudos-mdf2','agudos-revestidos'].entries()){
   assert.equal(flow.requiresReferenceApproval(d,destinations),false);
   const id=await rpc(operator,'pilot_submit_loading',{p_loading:json(args(c,d,'GUI'+i+'123')),p_action:'issue'});
@@ -121,6 +125,12 @@ module.exports=async function({browser,users,password,sql,record,rpc,denied,root
    assert.ok(box.height<=620,'Tall action panel must stay inside available height');
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   }
+  await page.locator('.action-column > .card').evaluate(el=>{const extra=document.createElement('p');extra.id='test-tall-panel';extra.style.height='1500px';extra.textContent='Conteúdo de verificação';el.prepend(extra)});
+  await page.waitForTimeout(100);
+  assert.ok(await page.locator('.action-column').evaluate(el=>el.scrollHeight>el.clientHeight),'Tall panel must scroll internally');
+  await page.locator('.action-column').getByRole('button',{name:'Emitir laudo',exact:true}).focus();
+  const visibleButton=await page.locator('.action-column').getByRole('button',{name:'Emitir laudo',exact:true}).boundingBox();assert.ok(visibleButton.y>=16&&visibleButton.y+visibleButton.height<=650);
+  await page.locator('#test-tall-panel').evaluate(el=>el.remove());
   await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>window.scrollTo(0,0));
   await page.getByRole('combobox',{name:'Placa',exact:true}).fill('GUIWEB1');
   await page.getByRole('combobox',{name:'Transportadora',exact:true}).fill('Transportadora orientação');

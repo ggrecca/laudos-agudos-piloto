@@ -3,6 +3,9 @@ on:
   push:
     branches: [main, "evolution/**"]
     paths-ignore: ["docs/**", "README.md"]
+concurrency:
+  group: laudos-verification-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
