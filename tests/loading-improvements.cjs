@@ -82,6 +82,7 @@ module.exports=async function({browser,users,password,sql,record,rpc,denied,root
  const emulsion=await rpc(admin,'pilot_save_product',{p_code:'GUIDE-EMUL',p_name:'Emulsão orientação',p_family:'Emulsão',p_specs:specs});
  const emulsionCycle=await cycle('GUIDE-EMUL-TANK',['7','Límpido'],'Emulsão',emulsion);
  const freshCycle=await cycle('GUIDE-FRESH-TANK');
+ const idleTank=await rpc(admin,'pilot_save_tank',{p_code:'GUIDE-NEW-CYCLE',p_family:'Resina'});
  sql("update public.pilot_cycles set manufactured_at=now() where id="+freshCycle);
  // Changing today's product must not change the cycle summary or certificate specifications.
  await rpc(admin,'pilot_save_product',{p_id:product,p_code:'GUIDE-001',p_name:'Nome atual diferente',p_family:'Resina',p_specs:specs.map(s=>s.name==='pH orientação'?{...s,min:7}:s)});
@@ -144,6 +145,7 @@ module.exports=async function({browser,users,password,sql,record,rpc,denied,root
   await page.screenshot({path:'test-results/loading-guidance-desktop.png',fullPage:true});
   record('Navegador: resumo histórico, troca de tanque, aviso não bloqueante, destaque imediato/foco, destino/origem, sticky 1280/1440/1920 e laudo/PDF sem faixa');
   await nav('Ciclos de tanques');await page.getByRole('button',{name:'Novo Ciclo de tanque',exact:true}).click();
+  await page.locator('[data-field="tank_id"] select').selectOption(String(idleTank));
   await page.locator('[data-field="product_id"] select').selectOption(String(product));
   const reference=page.getByRole('combobox',{name:'pH orientação',exact:true});
   await reference.fill('9');await page.locator('[data-field="reference-0"].analysis-nonconforming').waitFor();
