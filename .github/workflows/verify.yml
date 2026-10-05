@@ -30,7 +30,7 @@ jobs:
           cp supabase/002_consumer_scope.sql supabase/migrations/20260901000002_consumer.sql
           cp supabase/003_security_hardening.sql supabase/migrations/20260901000003_security.sql
           mv supabase/migrations/20261002180915_official_product_evolution.sql /tmp/laudos-evolution.sql
-          mv supabase/migrations/20261005222741_agudos_reference_reuse.sql /tmp/laudos-agudos-reference.sql
+          mv supabase/migrations/20261005225810_agudos_reference_reuse.sql /tmp/laudos-agudos-reference.sql
           supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
           supabase status -o env > /tmp/laudos-local.env
           set -a
