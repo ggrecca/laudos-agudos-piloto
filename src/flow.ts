@@ -4,7 +4,28 @@ export type ValidationIssue = { field: string; message: string };
 type LoadingInput = { cycle_id: number; loaded_at: string; plate: string; trailer: string; carrier: string; destination: string; analyst: string; values: string[] };
 type CycleInput = { tank_id: number; product_id: number; manufactured_at: string; lots: string; analyst: string; reference_values: string[] };
 type ApprovalRecord = { loading_id: number; edit_version: number; kind: "reuse" | "exception"; decision: string };
-type LoadingRecord = { id: number; state: string; edit_version: number; source: string; values: string[] };
+type LoadingRecord = { id: number; state: string; edit_version: number; source: string; values: string[]; destination_id?: string | null };
+export type Destination = { id: string; name: string; active: boolean; reference_reuse_requires_approval?: boolean };
+export function requiresReferenceApproval(destinationId: string | null | undefined, destinations: Destination[]): boolean {
+  return destinations.find(d => d.id === destinationId)?.reference_reuse_requires_approval !== false;
+}
+// Do not classify unfinished input as a deviation while the operator is typing.
+export function liveAnalysisResult(spec: AnalysisSpec, raw: string | undefined): AnalysisResult | null {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+  if (spec.qual) {
+    if (!spec.qual.includes(value) && spec.qual.some(allowed => allowed.startsWith(value))) return null;
+  } else if (/[.,]$/.test(value) || /e[+-]?$/i.test(value) || /^[+-]$/.test(value)) return null;
+  const result = analysisResult(spec, value);
+  return result.status === "invalid" ? null : result;
+}
+export function resinAge(manufacturedAt: string | null | undefined, family: string | undefined, now = Date.now()): { days: number; overFiveDays: boolean } | null {
+  if (family !== "Resina" || !manufacturedAt) return null;
+  const manufactured = Date.parse(manufacturedAt);
+  if (!Number.isFinite(manufactured) || manufactured > now) return null;
+  const elapsedDays = (now - manufactured) / 86400000;
+  return { days: Math.floor(elapsedDays), overFiveDays: elapsedDays > 5 };
+}
 export function specificationText(spec: AnalysisSpec): string {
   if (spec.qual) return spec.qual.join(" / ");
   const limits = [spec.min != null ? "≥ " + spec.min : "", spec.max != null ? "≤ " + spec.max : ""].filter(Boolean);
@@ -65,26 +86,26 @@ export function cycleValidation(form: CycleInput, specifications: AnalysisSpec[]
   if (specifications) inspectAnalyses(specifications, form.reference_values).issues.forEach(i => issues.push({ field: i.index < 0 ? "product_id" : "reference-" + i.index, message: i.message }));
   return issues;
 }
-export function approvalReasons(specifications: AnalysisSpec[], values: string[], source: string): string[] {
-  const reasons = source === "ref"
+export function approvalReasons(specifications: AnalysisSpec[], values: string[], source: string, reuseRequired = true): string[] {
+  const reasons = source === "ref" && reuseRequired
     ? ["Uso das análises de referência do Ciclo de tanque em vez de análises do caminhão. Requer autorização de Operador Técnico, Supervisor ou Administrador."] : [];
   const deviations = specifications.map((spec, i) => analysisResult(spec, values[i])).filter(r => r.status === "nonconforming");
   reasons.push(...deviations.map(r => r.reason!));
   if (deviations.length) reasons.push("Resultados fora da especificação exigem liberação em caráter de exceção por Supervisor ou Administrador.");
   return reasons;
 }
-export function authorizationNeeds(loading: LoadingRecord, specifications: AnalysisSpec[] | undefined, approvals: ApprovalRecord[]): { invalid: boolean; exception: boolean; reuse: boolean } {
+export function authorizationNeeds(loading: LoadingRecord, specifications: AnalysisSpec[] | undefined, approvals: ApprovalRecord[], destinations: Destination[] = []): { invalid: boolean; exception: boolean; reuse: boolean } {
   const analysis = specifications ? inspectAnalyses(specifications, loading.values) : null;
   const granted = (kind: "reuse" | "exception") => approvals.some(a => a.loading_id === loading.id && a.edit_version === loading.edit_version && a.kind === kind && a.decision === "approved");
   return {
     invalid: !analysis || analysis.errors.length > 0,
     exception: !!analysis?.exception && !granted("exception"),
-    reuse: loading.source === "ref" && !granted("reuse"),
+    reuse: loading.source === "ref" && requiresReferenceApproval(loading.destination_id, destinations) && !granted("reuse"),
   };
 }
-export function effectiveLoadingState(loading: LoadingRecord, specifications: AnalysisSpec[] | undefined, approvals: ApprovalRecord[]): string {
+export function effectiveLoadingState(loading: LoadingRecord, specifications: AnalysisSpec[] | undefined, approvals: ApprovalRecord[], destinations: Destination[] = []): string {
   if (loading.state !== "Aguardando autorização") return loading.state;
-  const needed = authorizationNeeds(loading, specifications, approvals);
+  const needed = authorizationNeeds(loading, specifications, approvals, destinations);
   return !needed.invalid && !needed.exception && !needed.reuse ? "Autorizado para emissão" : loading.state;
 }
 export function errorMessage(error: unknown): string {

@@ -62,7 +62,7 @@ async function capture(page,name,width){
  if(width===390&&['mobile-Início','mobile-Ciclos de tanques','mobile-loading-form'].includes(name))console.log('VISUAL_'+name+':'+(await page.screenshot({type:'jpeg',quality:65})).toString('base64'));
 }
 (async()=>{
- const baselineSha='8b5c1e2a9c6c2f7a068e5226c7e47702bd7dc774';
+ const baselineSha='244d671cdb8b8519e090c805f37d183a1c9002bd';
  execFileSync('git',['fetch','--depth=1','origin',baselineSha],{stdio:'pipe'});
  fs.mkdirSync(baseline,{recursive:true});
  const archive=execFileSync('git',['archive',baselineSha],{maxBuffer:8*1024*1024});
@@ -88,10 +88,14 @@ async function capture(page,name,width){
    for(const name of ['form','certificate','manual']){
     if(name==='certificate')for(const fixture of [before,after]){await nav(fixture.page,'Laudos');await fixture.page.locator('tbody tr').filter({hasText:loading.certificate_number}).click();await fixture.page.locator('.cert-responsibles').getByText('Ana',{exact:true}).waitFor();}
     if(name==='manual')for(const fixture of [before,after]){await fixture.page.locator('.sidebar nav').getByRole('button',{name:'Ajuda',exact:true}).click();await fixture.page.getByRole('dialog',{name:'Manual operacional'}).waitFor();}
+    // Normalize only the explicitly requested additions/removal/date; all remaining pixels must match production.
+    if(name==='form')await after.page.locator('.tank-loading-summary').evaluate(el=>{el.style.display='none'});
+    if(name==='certificate')await before.page.locator('.cert-conclusion').evaluate(el=>el.remove());
+    if(name==='manual')await before.page.locator('.manual-header small').evaluate(el=>{el.textContent=el.textContent.replace('02/10/2026','05/10/2026')});
     await capture(before.page,'desktop-before-'+name,width);await capture(after.page,'desktop-after-'+name,width);
     assert.ok(fs.readFileSync(out+'/desktop-before-'+name+'-'+width+'.png').equals(fs.readFileSync(out+'/desktop-after-'+name+'-'+width+'.png')),'desktop pixels changed '+name+' '+width);
    }
-   await before.context.close();await after.context.close();console.log('DESKTOP PIXEL IDENTICAL',width,'all 7 screens, loading form, certificate and manual');
+   await before.context.close();await after.context.close();console.log('DESKTOP PIXEL IDENTICAL',width,'all 7 screens; form/certificate/manual normalized only for requested changes');
   }
   for(const width of [320,375,390,430,768,900]){
    const {context,page,errors}=await fixture(browser,5175,width);

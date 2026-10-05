@@ -1,7 +1,7 @@
 # Laudos Agudos — Manual operacional
 
 Fábricas Químicas - Agudos
-Atualizado em 02/10/2026
+Atualizado em 05/10/2026
 
 ## 1. Visão geral e fluxo de trabalho
 
@@ -61,7 +61,7 @@ Referências, especificações, cards ativos e histórico.
 2. Escolha um tanque ativo e disponível. Um tanque não pode ter dois Ciclos de tanques ativos ao mesmo tempo.
 3. Selecione um produto ativo compatível com a família do tanque. Confira a versão e as especificações apresentadas.
 4. Informe data/hora da fabricação, lotes e responsável pelas análises.
-5. Registre os valores de referência. As especificações aparecem junto às análises; preencha todas as obrigatórias e use valores numéricos válidos quando exigidos.
+5. Registre os valores de referência. As especificações aparecem junto às análises; preencha todas as obrigatórias e use valores numéricos válidos quando exigidos. Um resultado fora da especificação destaca o campo em vermelho com a indicação Fora da especificação; o destaque desaparece ao corrigir o valor.
 6. Clique em Criar Ciclo de tanque. Se houver erro, confira os campos destacados e a mensagem visível.
 7. Nos cards ativos, use o ícone de olho para consultar dados, referências, especificações, histórico e carregamentos vinculados. Use Novo carregamento para iniciar uma transferência desse ciclo.
 
@@ -92,10 +92,10 @@ Dados do caminhão, destino, origem dos resultados e rascunho.
 2. Confira o ciclo, o produto e a data/hora. Só é possível criar carregamentos em ciclos ativos com produto ativo.
 3. Informe placa, selecione a carreta, preencha transportadora e selecione a unidade / destino exatos.
 4. Confira o nome do responsável que realizou as análises. Não mantenha um valor sugerido se ele não corresponder ao responsável real.
-5. Escolha a origem dos resultados: Análise do caminhão para registrar resultados próprios, ou análises do tanque para usar as referências do ciclo.
+5. Confira o resumo do tanque selecionado: produto/tipo, lotes e fabricação. Para resinas com mais de 120 horas desde a fabricação, aparece um aviso de idade que não impede a emissão. Escolha a origem dos resultados: Análise do caminhão para registrar resultados próprios, ou análises do tanque para usar as referências do ciclo.
 6. Preencha os resultados e compare cada valor com sua especificação. Campos aplicáveis oferecem sugestões de valores anteriores.
 7. Inclua observações pertinentes e use Salvar rascunho para continuar depois.
-8. Quando os dados estiverem completos, use Emitir laudo ou Solicitar autorização, conforme a ação apresentada à direita.
+8. Quando os dados estiverem completos, use Emitir laudo ou Solicitar autorização, conforme a ação apresentada à direita. No desktop, o painel de ações acompanha a rolagem; no mobile, utilize a barra de ações. Resultados fora da especificação recebem destaque vermelho durante o preenchimento, sem alterar o valor informado.
 
 Rascunhos podem manter análises ainda não concluídas, mas os dados obrigatórios do carregamento continuam sendo validados. A emissão e a solicitação de autorização exigem as análises obrigatórias completas e válidas.
 
@@ -105,7 +105,7 @@ Rascunhos podem manter análises ainda não concluídas, mas os dados obrigatór
 
 Uso de referências, exceções, cancelamentos e histórico.
 
-A necessidade de autorização é informada com seu motivo. Usar as análises do tanque exige aprovação de Operador Técnico ou superior. Um resultado fora da especificação exige aprovação de Supervisor ou Administrador. O mesmo carregamento pode exigir ambas.
+A necessidade de autorização é informada com seu motivo. Usar as análises do tanque exige aprovação de Operador Técnico ou superior, exceto para Agudos - MDF1, Agudos - MDF2 e Agudos - Revestidos. Nesses três destinos o reaproveitamento é dispensado de autorização. Um resultado fora da especificação exige aprovação de Supervisor ou Administrador. O mesmo carregamento pode exigir ambas.
 
 1. No carregamento, confira os motivos apresentados e clique em Solicitar autorização.
 2. Acompanhe o estado Aguardando autorização. O responsável deve abrir Autorizações e conferir o registro, os resultados e os motivos.

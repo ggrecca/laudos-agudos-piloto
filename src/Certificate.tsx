@@ -16,9 +16,6 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
   trace: CertificateTrace | null; traceError: string; retry: () => void; cancellation?: Request;
 }) {
   const rows = cycle?.specifications.map((spec, i) => ({ spec, value: loading.values[i] ?? "", result: analysisResult(spec, loading.values[i]) })) ?? [];
-  const deviations = rows.filter(row => row.result.status === "nonconforming");
-  const incomplete = !rows.length || rows.some(row => ["missing", "invalid"].includes(row.result.status));
-  const exceptional = trace?.approvals.some(a => a.kind === "exception");
   return <section className={"card certificate" + (loading.state==="Cancelado"?" cancelled-certificate":"")} aria-label={"Laudo " + loading.certificate_number}>
     {loading.state==="Cancelado"&&<div className="cancelled-banner">CANCELADO</div>}
     <div className="cert-head">
@@ -26,11 +23,6 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
       <span>Certificado de qualidade</span>
     </div>
     <h2>Laudo {loading.certificate_number}</h2>
-    <p className={"cert-conclusion " + (deviations.length || incomplete ? "exception" : "conforming")}>
-      {incomplete ? "Resultados incompletos: verificar o registro."
-        : deviations.length ? "Produto com resultados não conformes" + (exceptional ? " — emissão autorizada em caráter de exceção." : ".")
-        : rows.some(row => row.result.status === "conforming") ? "Resultados conformes às especificações avaliadas." : "Resultados informativos, sem limites de conformidade definidos."}
-    </p>
     <div className="cert-grid">
       <span>Produto / código<strong>{product?.name || "Não disponível"} · {product?.code || "—"}</strong></span>
       <span>Família<strong>{product?.family || "—"}</strong></span>

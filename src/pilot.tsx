@@ -3,7 +3,7 @@ import { RecentInput } from "./RecentInput";
 import { OperationalManual } from "./OperationalManual";
 import { can, roleLabel, type Role } from "./permissions";
 import { AuthorizationHistory, UsersManagement, ProductList, CycleHistory, CancellationButton, SpecificationHint, type Request, type ManagedUser, type Version } from "./Management";
-import { inspectAnalyses, loadingValidation, cycleValidation, approvalReasons, authorizationNeeds, effectiveLoadingState, errorMessage, type ValidationIssue } from "./flow";
+import { liveAnalysisResult, requiresReferenceApproval, resinAge, inspectAnalyses, loadingValidation, cycleValidation, approvalReasons, authorizationNeeds, effectiveLoadingState, errorMessage, type ValidationIssue, type Destination } from "./flow";
 import { Certificate, type CertificateTrace } from "./Certificate";
 import { createClient, type Session } from "@supabase/supabase-js";
 import {
@@ -158,15 +158,19 @@ async function fetchAll<T>(page: (from:number,to:number)=>PromiseLike<{data:unkn
   if(!result.data||result.data.length<1000)return {data:rows,error:null};
  }
 }
-function Field({ label, children, error, fieldKey }: { label: string; children: ReactNode; error?: string; fieldKey?: string }) {
+function Field({ label, children, error, fieldKey, analysis }: { label: string; children: ReactNode; error?: string; fieldKey?: string; analysis?: { spec: Spec; value: string } }) {
   const errorId = useId();
+  const deviationId = useId();
+  const nonconforming = !!analysis && liveAnalysisResult(analysis.spec, analysis.value)?.status === "nonconforming";
+  const describedBy = [error ? errorId : "", nonconforming ? deviationId : ""].filter(Boolean).join(" ") || undefined;
   const controls = Children.map(children, child => {
     if (!isValidElement<{ "aria-invalid"?: boolean; "aria-describedby"?: string; "aria-label"?: string }>(child)) return child;
     if (child.type !== "input" && child.type !== "select" && child.type !== "textarea" && child.type !== RecentInput) return child;
-    return cloneElement(child, { "aria-label": child.props["aria-label"] || label, "aria-invalid": !!error, "aria-describedby": error ? errorId : undefined });
+    return cloneElement(child, { "aria-label": child.props["aria-label"] || label, "aria-invalid": !!error || nonconforming, "aria-describedby": describedBy });
   });
-  return <label className={"field" + (error ? " invalid-field" : "")} data-field={fieldKey}>
+  return <label className={"field" + (error ? " invalid-field" : "") + (nonconforming ? " analysis-nonconforming" : "")} data-field={fieldKey}>
     <span>{label}</span>{controls}
+    {nonconforming && <span className="analysis-warning" id={deviationId}>Fora da especificação</span>}
     {error && <span className="field-error" id={errorId}>{error}</span>}
   </label>;
 }
@@ -222,6 +226,30 @@ function AuthorizationReasons({ reasons }: { reasons: string[] }) {
     <ul>{reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
   </section> : null;
 }
+function TankLoadingSummary({ cycle, product, tank, showAge }: { cycle: Cycle; product?: Product; tank?: Tank; showAge: boolean }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    setNow(Date.now());
+    if (!showAge) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, [cycle.id, showAge]);
+  const age = resinAge(cycle.manufactured_at, product?.family, now);
+  const manufactured = cycle.manufactured_at && Number.isFinite(Date.parse(cycle.manufactured_at))
+    ? new Date(cycle.manufactured_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Não informada";
+  return <section className="tank-loading-summary" aria-label="Informações do tanque selecionado">
+    <dl>
+      <div><dt>Tanque / Ciclo de tanque</dt><dd>{tank?.code || "Não informado"} · #{cycle.id}</dd></div>
+      <div><dt>Produto / tipo</dt><dd>{product?.name || "Não informado"} · {product?.family || "Não informado"}</dd></div>
+      <div><dt>Lotes</dt><dd>{cycle.lots?.trim() || "Não informados"}</dd></div>
+      <div><dt>Fabricação</dt><dd>{manufactured}</dd></div>
+    </dl>
+    {showAge && product?.family === "Resina" && !age && <p className="helper">Não foi possível calcular a idade da resina. Confira a data de fabricação do Ciclo de tanque.</p>}
+    {showAge && age?.overFiveDays && <p className="resin-age-warning" role="status">
+      <strong>Resina com mais de 5 dias desde a fabricação.</strong> Idade: {age.days} dias completos{age.days === 5 ? " e mais de 120 horas" : ""}. Fabricação: {manufactured} (horário de São Paulo). Este aviso não impede a emissão do laudo.
+    </p>}
+  </section>;
+}
 function FlowStep({
   number,
   count,
@@ -261,7 +289,7 @@ export function App() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingProfile[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
-  const [destinations, setDestinations] = useState<{id:string;name:string;active:boolean}[]>([]);
+  const [destinations, setDestinations] = useState<Destination[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [versions, setVersions] = useState<Version[]>([]);
@@ -374,7 +402,7 @@ export function App() {
       canManage
         ? fetchAll<PendingProfile>((from,to)=>db.rpc("pilot_list_pending_profiles").range(from,to))
         : Promise.resolve({ data: [], error: null }),
-      fetchAll<{id:string;name:string;active:boolean}>((from,to)=>db.from("pilot_destinations").select("*").order("display_order").range(from,to)),
+      fetchAll<Destination>((from,to)=>db.from("pilot_destinations").select("*").order("display_order").range(from,to)),
       fetchAll<Request>((from,to)=>db.from("pilot_authorization_requests").select("*").order("id", { ascending:false }).range(from,to)),
       canManage ? fetchAll<ManagedUser>((from,to)=>db.rpc("pilot_list_users").range(from,to)) : Promise.resolve({data:[],error:null}),
       can(nextPermissions,"products.manage") ? fetchAll<Version>((from,to)=>db.from("pilot_product_versions").select("*").order("product_id").order("version").range(from,to)) : Promise.resolve({data:[],error:null}),
@@ -538,8 +566,8 @@ export function App() {
   const tankFor = (c?: Cycle) => tanks.find((t) => t.id === c?.tank_id);
   const current = loadings.find((l) => l.id === selected);
   const currentCycle = current && cycleFor(current);
-  const needs = (l: Loading) => authorizationNeeds(l, cycleFor(l)?.specifications, approvals);
-  const stateFor = (l: Loading) => effectiveLoadingState(l, cycleFor(l)?.specifications, approvals);
+  const needs = (l: Loading) => authorizationNeeds(l, cycleFor(l)?.specifications, approvals, destinations);
+  const stateFor = (l: Loading) => effectiveLoadingState(l, cycleFor(l)?.specifications, approvals, destinations);
   const pending = loadings.filter(
     (l) =>
       l.state === "Aguardando autorização" &&
@@ -570,6 +598,7 @@ export function App() {
           key={i}
           fieldKey={"analysis-" + i}
           error={loadingError("analysis-" + i)}
+          analysis={{ spec: s, value: values[i] ?? "" }}
           label={`${s.name} ${s.unit ? `(${s.unit})` : ""}${s.required ? " *" : ""}`}
         >
           <RecentInput
@@ -836,14 +865,15 @@ export function App() {
   const cycleIssues = cycleValidation(cycleForm, selectedCycleProduct?.specifications);
   const loadingError = (field: string) => loadingAttempt ? loadingIssues.find(i => i.field === field)?.message : undefined;
   const cycleError = (field: string) => cycleAttempted ? cycleIssues.find(i => i.field === field)?.message : undefined;
-  const loadingReasons = selectedFormCycle ? approvalReasons(selectedFormCycle.specifications, loadingForm.values, loadingForm.source) : [];
+  const referenceApprovalRequired = requiresReferenceApproval(loadingForm.destination, destinations);
+  const loadingReasons = selectedFormCycle ? approvalReasons(selectedFormCycle.specifications, loadingForm.values, loadingForm.source, referenceApprovalRequired) : [];
   const needsFormApproval = current && !hasUnsavedLoadingChanges
     ? needs(current).reuse || needs(current).exception
-    : loadingForm.source === "ref" || loadingAnalysis.exception;
+    : (loadingForm.source === "ref" && referenceApprovalRequired) || loadingAnalysis.exception;
   const traceForCurrent = current && certificateTrace?.loading_id === current.id && certificateTrace.edit_version === current.edit_version ? certificateTrace : null;
   const canPrintCertificate = !!(traceForCurrent && currentCycle && productFor(currentCycle) && tankFor(currentCycle));
   const decisionLoading = decision ? loadings.find(l => l.id === decision.id) : undefined;
-  const decisionReasons = decisionLoading ? approvalReasons(cycleFor(decisionLoading)?.specifications ?? [], decisionLoading.values, decisionLoading.source) : [];
+  const decisionReasons = decisionLoading ? approvalReasons(cycleFor(decisionLoading)?.specifications ?? [], decisionLoading.values, decisionLoading.source, requiresReferenceApproval(decisionLoading.destination_id, destinations)) : [];
   function submitCycle() {
     setCycleAttempted(true);
     if (cycleIssues.length) {
@@ -1127,6 +1157,7 @@ export function App() {
                       ))}
                     </select>
                   </Field>
+                  {selectedFormCycle && <TankLoadingSummary cycle={selectedFormCycle} product={productFor(selectedFormCycle)} tank={tankFor(selectedFormCycle)} showAge={newLoading || editLoading} />}
                   <Field fieldKey="loaded_at" error={loadingError("loaded_at")} label="Data e hora">
                     <input
                       type="datetime-local"
@@ -1190,7 +1221,7 @@ export function App() {
                     >
                       <option value="own">Análise do caminhão</option>
                       <option value="ref">
-                        Referência do tanque (requer autorização)
+                        {referenceApprovalRequired ? "Referência do tanque (requer autorização)" : "Referência do tanque (dispensada para Agudos)"}
                       </option>
                     </select>
                   </Field>
@@ -1198,7 +1229,7 @@ export function App() {
                 {selectedFormCycle && (
                   <>
                     <h3>Resultados</h3>
-                    {loadingForm.source === "ref" && <p className="helper">Resultados do Ciclo de tanque selecionado. O uso exige autorização e os valores são preservados.</p>}
+                    {loadingForm.source === "ref" && <p className="helper">Resultados do Ciclo de tanque selecionado. Os valores são preservados. {referenceApprovalRequired ? "O reaproveitamento exige autorização." : "O reaproveitamento é dispensado de autorização para esta unidade de Agudos."} Resultados fora da especificação continuam exigindo autorização de exceção.</p>}
                     {currentValues(selectedFormCycle, loadingForm.values, (v) =>
                       setLoadingForm((f) => ({ ...f, values: v })),
                       loadingForm.source === "ref" || (!newLoading && !editLoading),
@@ -1362,7 +1393,7 @@ export function App() {
                   <p>
                     {productFor(cycleFor(l))?.name} · {l.carrier}
                   </p>
-                  <AuthorizationReasons reasons={approvalReasons(cycleFor(l)?.specifications ?? [], l.values, l.source)} />
+                  <AuthorizationReasons reasons={approvalReasons(cycleFor(l)?.specifications ?? [], l.values, l.source, requiresReferenceApproval(l.destination_id, destinations))} />
                 </div>
                 <div className="actions">
                   {needs(l).reuse &&
@@ -1633,7 +1664,7 @@ export function App() {
                   <>
                     <h3>Referência do tanque</h3>
                     {selectedCycleProduct.specifications.map((s, i) => (
-                      <Field key={i} fieldKey={"reference-" + i} error={cycleError("reference-" + i)} label={`${s.name} ${s.unit}${s.required !== false ? " *" : ""}`}>
+                      <Field key={i} fieldKey={"reference-" + i} error={cycleError("reference-" + i)} analysis={{ spec: s, value: cycleForm.reference_values[i] ?? "" }} label={`${s.name} ${s.unit}${s.required !== false ? " *" : ""}`}>
                         <RecentInput
                           label={s.name}
                           options={recentAnalysisValues(selectedCycleProduct.id, s)}

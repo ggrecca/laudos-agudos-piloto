@@ -34,6 +34,11 @@ jobs:
           set +a
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/migration-legacy.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/laudos-evolution.sql
+          supabase migration new agudos_reference_reuse
+          generated_migration="$(rg --files supabase/migrations | rg '_agudos_reference_reuse.sql$')"
+          cp supabase/agudos_reference_reuse.sql "$generated_migration"
+          echo "GENERATED_MIGRATION=$generated_migration"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$generated_migration"
       - name: Run database, Auth, RLS and browser flows
         run: |
           set -a
