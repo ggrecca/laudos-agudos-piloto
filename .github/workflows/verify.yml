@@ -30,6 +30,7 @@ jobs:
           cp supabase/002_consumer_scope.sql supabase/migrations/20260901000002_consumer.sql
           cp supabase/003_security_hardening.sql supabase/migrations/20260901000003_security.sql
           mv supabase/migrations/20261002180915_official_product_evolution.sql /tmp/laudos-evolution.sql
+          mv supabase/migrations/20261005222741_agudos_reference_reuse.sql /tmp/laudos-agudos-reference.sql
           supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
           supabase status -o env > /tmp/laudos-local.env
           set -a
@@ -37,11 +38,7 @@ jobs:
           set +a
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/migration-legacy.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/laudos-evolution.sql
-          supabase migration new agudos_reference_reuse
-          generated_migration="$(rg --files supabase/migrations | rg '_agudos_reference_reuse.sql$')"
-          cp supabase/agudos_reference_reuse.sql "$generated_migration"
-          echo "GENERATED_MIGRATION=$generated_migration"
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$generated_migration"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/laudos-agudos-reference.sql
       - name: Run database, Auth, RLS and browser flows
         run: |
           set -a
