@@ -316,7 +316,12 @@ let browser,lastPage;
  assert.equal(await page.getByRole("button",{name:"Solicitar cancelamento",exact:true}).count(),0);
  for(const width of [1280,1920]){await page.setViewportSize({width,height:1000});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));await page.screenshot({path:"test-results/certificate-"+width+".png",fullPage:true});}
  assert.equal(await page.locator("body").getByText(/piloto|protótipo/i).count(),0);
+ // UI sign-out revokes every session of that user. Renew the independent API
+ // sessions before each test module instead of relying on stale-but-unexpired JWTs.
+ const renewApiSessions=async()=>{for(const u of Object.values(users))assert.ifError((await u.client.auth.signInWithPassword({email:u.email,password})).error);};
+ await renewApiSessions();
  await require('./loading-improvements.cjs')({browser,users,password,sql,record,rpc,denied,root,consoleErrors});
+ await renewApiSessions();
  await require('./password-pipeline-print.cjs')({browser,users,password,sql,record,rpc,denied,root,consoleErrors,cycle:c1,product,loadingArgs});
  await require('./mobile-flows.cjs')({browser,users,password,sql,record,consoleErrors});
  assert.deepEqual(consoleErrors,[]);
