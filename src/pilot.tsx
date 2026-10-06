@@ -991,7 +991,7 @@ export function App() {
         <div className="account">
           <strong>{profile.name || session.user.email}</strong>
           <small>{roleLabel(profile.role)}</small>
-          <button type="button" className="account-password" onClick={()=>{setPasswordMode("change");setMobileMenuOpen(false);}}>Alterar senha</button>
+          <button type="button" className="account-password" onClick={()=>{if(showLoading&&!confirmLeaveLoading())return;setPasswordMode("change");setMobileMenuOpen(false);}}>Alterar senha</button>
           <button onClick={() => { setMobileMenuOpen(false); db.auth.signOut(); }}>
             <LogOut size={16} /> Sair
           </button>
@@ -1131,7 +1131,7 @@ export function App() {
                 </h1>
                 <p>
                   {newLoading
-                    ? "Informe os dados do caminhão e os resultados da análise."
+                    ? "Informe os dados do carregamento e os resultados da análise."
                     : `Ciclo de tanque ${current!.cycle_id} · ${productFor(currentCycle)?.name || ""}`}
                 </p>
               </div>
@@ -1233,7 +1233,7 @@ export function App() {
                         }));
                       }}
                     >
-                      <option value="own">Análise do caminhão</option>
+                      <option value="own">{pipelineTransfer ? "Análise da transferência" : "Análise do caminhão"}</option>
                       <option value="ref">
                         {referenceApprovalRequired ? "Referência do tanque (requer autorização)" : "Referência do tanque (análise do caminhão dispensada em Agudos)"}
                       </option>

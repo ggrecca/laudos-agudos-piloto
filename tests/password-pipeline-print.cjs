@@ -43,10 +43,12 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  assert.equal(sql('select decision from public.pilot_authorization_requests where id='+req),'rejected');
  assert.equal((await endpoint({action:'request_reset',email})).status,200);
  const approvedReq=Number(sql("select id from public.pilot_authorization_requests where password_user_id='"+uid+"' and decision='pending'"));
- const authorization=await rpc(sup,'pilot_decide_password_reset',{p_id:approvedReq,p_approve:true,p_reason:'Identidade conferida pessoalmente'});assert.match(authorization.code,/^[a-f0-9]{32}$/);
+ let authorization=await rpc(sup,'pilot_decide_password_reset',{p_id:approvedReq,p_approve:true,p_reason:'Identidade conferida pessoalmente'});assert.match(authorization.code,/^[a-f0-9]{32}$/);
  assert.equal((await user.from('pilot_products').select('id')).data.length,0);
  assert.deepEqual(await rpc(user,'pilot_permissions',{}),[]);
- await denied(sup,'pilot_decide_password_reset',{p_id:approvedReq,p_approve:true,p_reason:'Gerar outro código'},/ainda está válido/);
+ const previousCode=authorization.code;
+ authorization=await rpc(sup,'pilot_decide_password_reset',{p_id:approvedReq,p_approve:true,p_reason:'Renovação após conferência pessoal; código perdido'});assert.notEqual(authorization.code,previousCode);
+ assert.equal((await endpoint({action:'reset',email,code:previousCode,password:nextPassword,confirmation:nextPassword})).status,400);
  assert.equal((await endpoint({action:'change',current_password:password,password:nextPassword,confirmation:nextPassword})).status,403);
  await page.getByRole('button',{name:'Voltar',exact:true}).click();
  await page.getByLabel('E-mail',{exact:true}).fill(email);await page.getByLabel('Senha',{exact:true}).fill(password);await page.getByRole('button',{name:'Entrar',exact:true}).click();
@@ -122,15 +124,15 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  await page.locator('tbody tr').filter({hasText:certNumber}).click();await page.locator('.certificate').waitFor();await page.locator('.cert-responsibles').getByText('Operador atualizado',{exact:true}).waitFor();
  const cert=page.locator('.certificate');assert.ok((await cert.innerText()).includes('Por tubulação'));assert.ok(!(await cert.innerText()).includes('Data do carregamento'));
  const fields=await cert.locator('.cert-grid > span').allTextContents();assert.ok(fields[0].startsWith('Família'));assert.ok(fields[1].startsWith('Produto / código'));assert.ok(fields[2].startsWith('Lotes'));assert.ok(fields[3].startsWith('Fabricação'));assert.ok(fields[4].startsWith('Tanque / Ciclo de tanque'));
- assert.match(await cert.locator('.cert-footer').innerText(),/Data de emissão[\s\S]*Origem dos resultados[\s\S]*Análises do caminhão/);
+ assert.match(await cert.locator('.cert-footer').innerText(),/Data de emissão[\s\S]*Origem dos resultados[\s\S]*Análises da transferência por tubulação/);
  const pdfPages=async name=>{const bytes=await page.pdf({path:'test-results/'+name+'.pdf',preferCSSPageSize:true,printBackground:true});assert.equal((bytes.toString('latin1').match(/\/Type\s*\/Page\b/g)||[]).length,1,'Certificate PDF must have exactly one page: '+name);};
  await pdfPages('pipeline-certificate');
  // Exercise nine (current production maximum) and thirty complete rows, without truncation.
- for(const count of [9,30]){
+ for(const count of [9,30,60]){
   await cert.locator('tbody').evaluate((tbody,count)=>{const first=tbody.rows[0].cloneNode(true);tbody.innerHTML='';for(let i=0;i<count;i++){const row=first.cloneNode(true);row.cells[0].textContent='Análise completa '+(i+1);tbody.append(row);}},count);
   await pdfPages('certificate-'+count+'-analyses');assert.equal(await cert.locator('tbody tr').count(),count);
  }
  await page.screenshot({path:'test-results/certificate-identification.png',fullPage:true});
- record('Laudo: nova ordem, tubulação coerente, rodapé com emissão/origem, sem data do carregamento e PDFs de 1 página com 9 e 30 análises completas');
+ record('Laudo: nova ordem, tubulação coerente, rodapé com emissão/origem, sem data do carregamento e PDFs de 1 página com 9, 30 e 60 análises completas');
  await context.close();
 };

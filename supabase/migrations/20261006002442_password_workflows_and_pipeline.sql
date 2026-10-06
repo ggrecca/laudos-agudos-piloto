@@ -1,4 +1,8 @@
 -- Additive evolution: existing requests and operational records remain unchanged.
+-- A request from the login is anonymous: do not fabricate an authenticated actor.
+alter table public.pilot_audit alter column actor_id drop not null;
+alter table public.pilot_audit add constraint pilot_anonymous_reset_audit_check check(
+ actor_id is not null or (action='solicitou reset de senha' and entity='password_reset' and details @> '{"identity_verified":false}'::jsonb));
 alter table public.pilot_authorization_requests add column password_user_id uuid references auth.users(id);
 alter table public.pilot_authorization_requests add column completed_at timestamptz;
 alter table public.pilot_authorization_requests drop constraint pilot_authorization_requests_kind_check;
@@ -24,6 +28,7 @@ create table pilot_private.password_change_permits(
  user_id uuid primary key references auth.users(id), nonce_hash text not null,
  request_id bigint references public.pilot_authorization_requests(id), expires_at timestamptz not null);
 create table pilot_private.password_rate_limits(key_hash text primary key, window_start timestamptz not null, attempts integer not null);
+create index pilot_password_permit_request_idx on pilot_private.password_change_permits(request_id);
 alter table pilot_private.password_reset_secrets enable row level security;
 alter table pilot_private.password_change_permits enable row level security;
 alter table pilot_private.password_rate_limits enable row level security;
@@ -82,12 +87,12 @@ begin
  (actor.role='Supervisor' and target.role not in ('Operador Técnico','Operador A','Consulta')) then raise exception 'Acesso negado para este usuário'; end if;
  if length(trim(coalesce(p_reason,'')))<3 then raise exception 'Informe a justificativa da decisão'; end if;
  -- An expired/locked code may be renewed, but every renewal has an audit event.
- if r.decision='approved' and p_approve and exists(select 1 from pilot_private.password_reset_secrets where request_id=r.id and expires_at>now() and attempts<5) then raise exception 'O código autorizado ainda está válido'; end if;
  if r.decision='approved' and not p_approve then raise exception 'Uma aprovação já concedida não pode ser reescrita'; end if;
  if r.decision='pending' then
  update public.pilot_authorization_requests set decision=case when p_approve then 'approved' else 'rejected' end,actor_id=actor.id,actor_name=actor.name,actor_role=actor.role,decided_at=now(),decision_reason=trim(p_reason) where id=r.id;
  end if;
  if p_approve then
+ delete from pilot_private.password_change_permits where request_id=r.id;
  code:=encode(extensions.gen_random_bytes(16),'hex'); expiry:=now()+interval '24 hours';
  insert into pilot_private.password_reset_secrets values(r.id,encode(extensions.digest(code,'sha256'),'hex'),expiry,0)
  on conflict(request_id) do update set code_hash=excluded.code_hash,expires_at=excluded.expires_at,attempts=0;
@@ -131,6 +136,8 @@ create function pilot_private.guard_password_change() returns trigger language p
 declare permit pilot_private.password_change_permits; nonce text;
 begin
  select raw_app_meta_data->>'laudos_password_permit' into nonce from auth.users where id=new.id;
+ select * into permit from pilot_private.password_change_permits where user_id=new.id;
+ if permit.request_id is not null then perform 1 from public.pilot_authorization_requests where id=permit.request_id for update; end if;
  select * into permit from pilot_private.password_change_permits where user_id=new.id for update;
  if nonce is null or permit.user_id is null or permit.expires_at<=now() or
  permit.nonce_hash<>encode(extensions.digest(nonce,'sha256'),'hex') then raise exception 'Use o fluxo autorizado de senha do Laudos Agudos'; end if;

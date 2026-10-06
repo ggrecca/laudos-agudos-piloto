@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { analysisResult, isPipelineTransfer } from "./flow";
+import { analysisResult, isPipelineTransfer, resultOrigin } from "./flow";
 import { roleLabel } from "./permissions";
 import type { Request } from "./Management";
 import type { Loading, Cycle, Product, Tank } from "./pilot";
@@ -22,21 +22,24 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
       const element = certificate.current;
       if (!element || document.body.classList.contains("manual-printing")) return;
       element.style.zoom = "1";
+      element.style.removeProperty("--certificate-print-width");
       // A4, 10mm margins: 277mm available height, with a small rounding reserve.
       const page = document.createElement("div");
       page.style.cssText = "position:absolute;visibility:hidden;height:277mm;width:0";
       document.body.append(page);
       const available = page.getBoundingClientRect().height - 6;
       page.remove();
-      element.style.zoom = String(Math.min(1, available / Math.max(element.scrollHeight, element.getBoundingClientRect().height)));
+      const scale = Math.min(1, available / Math.max(element.scrollHeight, element.getBoundingClientRect().height));
+      element.style.zoom = String(scale);
+      element.style.setProperty("--certificate-print-width", `${190 / scale}mm`);
     };
-    const restore = () => { if (certificate.current) certificate.current.style.zoom = ""; };
+    const restore = () => { if (certificate.current) { certificate.current.style.zoom = ""; certificate.current.style.removeProperty("--certificate-print-width"); } };
     window.addEventListener("beforeprint", fit);
     window.addEventListener("afterprint", restore);
     return () => { window.removeEventListener("beforeprint", fit); window.removeEventListener("afterprint", restore); };
   }, []);
   const pipeline = isPipelineTransfer(cycle?.product_snapshot?.family, loading.destination_id);
-  const origin = loading.source === "ref" ? "Análises de referência do Ciclo de tanque" : "Análises do caminhão";
+  const origin = resultOrigin(loading.source, pipeline);
   const rows = cycle?.specifications.map((spec, i) => ({ spec, value: loading.values[i] ?? "", result: analysisResult(spec, loading.values[i]) })) ?? [];
   return <section ref={certificate} className={"card certificate" + (loading.state==="Cancelado"?" cancelled-certificate":"")} aria-label={"Laudo " + loading.certificate_number}>
     {loading.state==="Cancelado"&&<div className="cancelled-banner">CANCELADO</div>}
@@ -74,7 +77,7 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
     <section className="cert-responsibles">
       <h3>Responsáveis</h3>
       <dl>
-        <div><dt>{loading.source === "ref" ? "Responsável pelas análises de referência" : "Responsável pelas análises do caminhão"}</dt>
+        <div><dt>{loading.source === "ref" ? "Responsável pelas análises de referência" : pipeline ? "Responsável pelas análises da transferência" : "Responsável pelas análises do caminhão"}</dt>
           <dd>{loading.source === "ref" ? cycle?.analyst || "Não informado" : loading.analyst}</dd></div>
         {loading.source === "ref" && <div><dt>Responsável informado no carregamento</dt><dd>{loading.analyst}</dd></div>}
         <div><dt>Emissão do laudo</dt><dd>{trace ? trace.issuer.name : "Identificação pendente de consulta"}</dd></div>

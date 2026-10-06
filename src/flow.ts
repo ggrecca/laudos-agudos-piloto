@@ -6,6 +6,9 @@ type CycleInput = { tank_id: number; product_id: number; manufactured_at: string
 type ApprovalRecord = { loading_id: number; edit_version: number; kind: "reuse" | "exception"; decision: string };
 type LoadingRecord = { id: number; state: string; edit_version: number; source: string; values: string[]; destination_id?: string | null };
 export type Destination = { id: string; name: string; active: boolean; reference_reuse_requires_approval?: boolean };
+export function resultOrigin(source: string, pipeline = false): string {
+  return source === "ref" ? "Análises de referência do Ciclo de tanque" : pipeline ? "Análises da transferência por tubulação" : "Análises do caminhão";
+}
 export function isPipelineTransfer(family: string | undefined, destinationId: string | null | undefined): boolean {
   return family === "Resina" && destinationId === "agudos-mdf2";
 }
