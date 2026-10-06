@@ -58,6 +58,11 @@ jobs:
       - name: Verify published production UI (read-only)
         if: github.ref == 'refs/heads/main'
         run: NODE_PATH=/tmp/laudos-test/node_modules node tests/production-smoke.cjs
+      - name: Preserve Edge Function diagnostic logs
+        if: always()
+        run: |
+          mkdir -p test-results
+          if [ -f /tmp/laudos-functions.log ]; then cp /tmp/laudos-functions.log test-results/password-edge-runtime.log; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

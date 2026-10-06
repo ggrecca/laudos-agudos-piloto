@@ -25,7 +25,8 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  await page.goto('http://127.0.0.1:5173');
  await page.getByRole('button',{name:'Esqueci minha senha',exact:true}).click();
  await page.getByLabel('E-mail',{exact:true}).fill(email);
- await page.getByRole('button',{name:'Solicitar reset',exact:true}).click();
+ const [resetResponse]=await Promise.all([page.waitForResponse(response=>response.url().includes('/functions/v1/password-actions')&&response.request().method()==='POST'),page.getByRole('button',{name:'Solicitar reset',exact:true}).click()]);
+ const resetReply=await resetResponse.json();assert.equal(resetResponse.status(),200,JSON.stringify(resetReply));
  await page.getByRole('status').filter({hasText:'Se houver uma conta ativa'}).waitFor();
  const req=Number(sql("select id from public.pilot_authorization_requests where password_user_id='"+uid+"' and decision='pending'"));assert.ok(req);
  assert.equal((await endpoint({action:'request_reset',email})).status,200);
