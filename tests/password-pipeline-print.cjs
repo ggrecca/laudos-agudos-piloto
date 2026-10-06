@@ -70,6 +70,28 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  await denied(sup,'pilot_decide_password_reset',{p_id:adminReq,p_approve:true,p_reason:'Tentativa contra Administrador'},/Acesso/);
  await rpc(admin,'pilot_decide_password_reset',{p_id:adminReq,p_approve:false,p_reason:'Solicitação de teste rejeitada pelo Administrador'});
  record('Reset: Administrador decide; Supervisor não amplia poderes sobre Administradores; histórico inclui decisão, ator, datas e conclusão');
+ // Expiration, five attempts, renewal and one-use permit concurrency.
+ sql('truncate pilot_private.password_rate_limits');
+ assert.equal((await endpoint({action:'request_reset',email})).status,200);
+ const lockedReq=Number(sql("select id from public.pilot_authorization_requests where password_user_id='"+uid+"' and decision='pending'"));
+ const firstCode=await rpc(sup,'pilot_decide_password_reset',{p_id:lockedReq,p_approve:true,p_reason:'Conferência presencial para teste de bloqueio'});
+ const decisionTime=sql('select decided_at::text from public.pilot_authorization_requests where id='+lockedReq);
+ for(let i=0;i<5;i++)assert.equal((await endpoint({action:'reset',email,code:'f'.repeat(32),password:'Locked-local-81!',confirmation:'Locked-local-81!'})).status,400);
+ assert.equal((await endpoint({action:'reset',email,code:firstCode.code,password:'Locked-local-81!',confirmation:'Locked-local-81!'})).status,400);
+ const renewed=await rpc(sup,'pilot_decide_password_reset',{p_id:lockedReq,p_approve:true,p_reason:'Identidade novamente conferida; renovação'});
+ assert.notEqual(renewed.code,firstCode.code);assert.equal(sql('select decided_at::text from public.pilot_authorization_requests where id='+lockedReq),decisionTime);
+ sql("update pilot_private.password_reset_secrets set expires_at=now()-interval '1 second' where request_id="+lockedReq);
+ assert.equal((await endpoint({action:'reset',email,code:renewed.code,password:'Locked-local-81!',confirmation:'Locked-local-81!'})).status,400);
+ const finalCode=await rpc(admin,'pilot_decide_password_reset',{p_id:lockedReq,p_approve:true,p_reason:'Administrador conferiu novamente o titular'});
+ assert.equal((await endpoint({action:'reset',email,code:finalCode.code,password:nextPassword,confirmation:nextPassword})).status,400,'Same password must fail without consuming authorization');
+ assert.equal(sql('select completed_at is null from public.pilot_authorization_requests where id='+lockedReq),'t');
+ assert.equal((await endpoint({action:'reset',email,code:finalCode.code,password:'Unlocked-local-92!',confirmation:'Unlocked-local-92!'})).status,200);
+ assert.ifError((await user.auth.signInWithPassword({email,password:'Unlocked-local-92!'})).error);
+ // Restore the reference password for the normal-change UI test through the protected API.
+ assert.equal((await endpoint({action:'change',current_password:'Unlocked-local-92!',password:nextPassword,confirmation:nextPassword})).status,200);
+ assert.ifError((await user.auth.signInWithPassword({email,password:nextPassword})).error);
+ sql('truncate pilot_private.password_rate_limits'); // Isolated test housekeeping only.
+ record('Reset: validade de 24h, bloqueio após 5 códigos incorretos, renovação auditada, decisão original preservada e falha do Auth sem consumo');
  const wrong=await endpoint({action:'change',current_password:'wrong',password:'Changed-local-95!',confirmation:'Changed-local-95!'});assert.equal(wrong.status,400);assert.equal(wrong.field,'current');
  const mismatch=await endpoint({action:'change',current_password:nextPassword,password:'Changed-local-95!',confirmation:'other'});assert.equal(mismatch.field,'confirmation');
  assert.ok((await user.auth.updateUser({password:'Bypass-local-12!'})).error);
@@ -79,8 +101,8 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  await dialog.getByLabel('Senha atual',{exact:true}).fill(nextPassword);await dialog.getByLabel('Nova senha',{exact:true}).fill('Changed-local-95!');await dialog.getByLabel('Confirmar nova senha',{exact:true}).fill('Changed-local-95!');await dialog.getByRole('button',{name:'Alterar senha',exact:true}).click();
  await page.getByLabel('Senha',{exact:true}).waitFor();
  assert.ifError((await user.auth.signInWithPassword({email,password:'Changed-local-95!'})).error);
- assert.equal(sql("select count(*) from public.pilot_authorization_requests where password_user_id='"+uid+"'"),'2');
- assert.equal(sql("select count(*) from public.pilot_audit where actor_id='"+uid+"' and action='alterou a própria senha'"),'1');
+ assert.equal(sql("select count(*) from public.pilot_authorization_requests where password_user_id='"+uid+"'"),'3');
+ assert.equal(sql("select count(*) from public.pilot_audit where actor_id='"+uid+"' and action='alterou a própria senha'"),'2');
  record('Alterar senha: senha atual validada no servidor, erros locais, confirmação, sucesso no navegador, sem autorização e sessões encerradas');
  // Resin snapshot + stable destination jointly determine the pipe exception.
  const pipe=await rpc(operator,'pilot_create_loading',{...loadingArgs(cycle,'agudos-mdf2'),p_plate:'',p_carrier:''});

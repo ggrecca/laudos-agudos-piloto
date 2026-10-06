@@ -115,7 +115,10 @@ async function capture(page,name,width){
      await before.page.locator('.certificate').evaluate(el=>el.style.display='none');
      await after.page.locator('.certificate').evaluate(el=>el.style.display='none');
     }
-    if(name==='manual')await before.page.locator('.manual-header small').evaluate(el=>{for(const node of el.childNodes)if(node.nodeType===Node.TEXT_NODE)node.textContent=node.textContent.replace('02/10/2026','05/10/2026')});
+    if(name==='manual'){
+     // New operational help chapters are intentionally changed; real-flow tests verify all 17 chapters and their download.
+     for(const fixture of [before,after])await fixture.page.locator('.manual-layout').evaluate(el=>el.style.visibility='hidden');
+    }
     if(name==='form'||name==='certificate'){
      const oldBox=await before.page.locator('.action-column').boundingBox(),newBox=await after.page.locator('.action-column').boundingBox();
      for(const key of ['x','y','width','height'])assert.ok(Math.abs(oldBox[key]-newBox[key])<0.1,'Action panel geometry changed '+key);

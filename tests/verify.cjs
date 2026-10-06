@@ -174,7 +174,7 @@ let browser,lastPage;
  const manualText=fs.readFileSync("test-results/manual-download.md","utf8");
  assert.match(manualText,/15\. Preservar a rastreabilidade/);assert.match(manualText,/Agudos - MDF1/);assert.match(manualText,/Taquari - Revestidos/);
  await page.emulateMedia({media:"print"});
- assert.equal(await manual.locator(".manual-section:visible").count(),15);
+ assert.equal(await manual.locator(".manual-section:visible").count(),17);
  assert.equal(await page.locator(".shell").isVisible(),false);
  await page.pdf({path:"test-results/manual-operacional.pdf",format:"A4",printBackground:true});
  const manualPages=(fs.readFileSync("test-results/manual-operacional.pdf").toString("latin1").match(/\/Type\s*\/Page\b/g)||[]).length;
