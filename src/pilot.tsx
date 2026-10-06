@@ -27,7 +27,9 @@ import {
 
 const url = import.meta.env.VITE_SUPABASE_URL as string;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
-const db = createClient(url || "https://missing.supabase.co", key || "missing");
+// Keep the Supabase default storage key, including sessions from previous releases.
+const authStorageKey = `sb-${new URL(url || "https://missing.supabase.co").hostname.split(".")[0]}-auth-token`;
+const db = createClient(url || "https://missing.supabase.co", key || "missing", {auth:{storageKey:authStorageKey}});
 type ProfileStatus = "Pendente" | "Ativo" | "Rejeitado" | "Bloqueado";
 type Profile = {
   id: string;
@@ -665,6 +667,15 @@ export function App() {
     });
   }
 
+  function finishPasswordChange(message:string) {
+    // Auth has already revoked all sessions. Its logout endpoint can report a
+    // missing session; clear this browser's cache even in that expected case.
+    try { for (const suffix of ["", "-code-verifier", "-user"]) window.localStorage.removeItem(authStorageKey+suffix); } catch { /* Storage may be unavailable. */ }
+    refreshRequest.current+=1;
+    setSession(null);setProfile(null);setPermissions([]);setPassword("");setPasswordConfirmation("");
+    setPasswordRequired(false);setPasswordMode(null);setAuthMode("login");setNotice(message);setNoticeTone("success");
+  }
+
   if (!url || !key)
     return (
       <div className="center">
@@ -672,8 +683,8 @@ export function App() {
         <p>Faltam as variáveis públicas de conexão com o Supabase.</p>
       </div>
     );
-  if (passwordRequired && session) return <main className="login-layout"><PasswordFlow db={db} initialMode="reset" mandatory email={session.user.email} close={()=>{void db.auth.signOut();}} done={message=>{setPasswordRequired(false);setPasswordMode(null);setNotice(message);setNoticeTone("success");}}/></main>;
-  if (!session && passwordMode) return <main className="login-layout"><PasswordFlow db={db} initialMode={passwordMode==="change"?"request_reset":passwordMode} email={email} close={()=>setPasswordMode(null)} done={message=>{setPasswordMode(null);setAuthMode("login");setNotice(message);setNoticeTone("success");}}/></main>;
+  if (passwordRequired && session) return <main className="login-layout"><PasswordFlow db={db} initialMode="reset" mandatory email={session.user.email} close={()=>{void db.auth.signOut();}} done={finishPasswordChange}/></main>;
+  if (!session && passwordMode) return <main className="login-layout"><PasswordFlow db={db} initialMode={passwordMode==="change"?"request_reset":passwordMode} email={email} close={()=>setPasswordMode(null)} done={finishPasswordChange}/></main>;
   if (!session)
     return (
       <main className="login-layout">
@@ -1384,7 +1395,7 @@ export function App() {
                 <p>Pendências para decisão e histórico permanente de autorizações.</p>
               </div>
             </div>
-            <PasswordResetAuthorizations requests={requests} db={db} run={run} busy={busy} actorId={session.user.id} canDecide={can(permissions,"password_resets.decide")}/>
+            <PasswordResetAuthorizations users={users} requests={requests} db={db} run={run} busy={busy} actorId={session.user.id} canDecide={can(permissions,"password_resets.decide")}/>
             <section className="card">
               <LoadingTable
                 rows={pending}
@@ -2090,7 +2101,7 @@ export function App() {
       </main>
     </div>
     <OperationalManual open={manualOpen} onClose={() => setManualOpen(false)} role={profile.role} destinations={destinations} />
-    {passwordMode === "change" && <div className="modal-backdrop"><PasswordFlow db={db} initialMode="change" close={()=>setPasswordMode(null)} done={message=>{setPasswordMode(null);setNotice(message);setNoticeTone("success");}}/></div>}
+    {passwordMode === "change" && <div className="modal-backdrop"><PasswordFlow db={db} initialMode="change" close={()=>setPasswordMode(null)} done={finishPasswordChange}/></div>}
     </>
   );
 }
