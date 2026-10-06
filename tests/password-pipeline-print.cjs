@@ -69,7 +69,9 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  await page.getByLabel('Nova senha',{exact:true}).fill(nextPassword);await page.getByLabel('Confirmar nova senha',{exact:true}).fill('different');
  await page.getByRole('button',{name:'Salvar nova senha',exact:true}).click();await page.getByText('As senhas não coincidem.',{exact:true}).waitFor();
  assert.equal(sql('select completed_at is null from public.pilot_authorization_requests where id='+approvedReq),'t');
- await page.getByLabel('Confirmar nova senha',{exact:true}).fill(nextPassword);await page.getByRole('button',{name:'Salvar nova senha',exact:true}).click();
+ await page.getByLabel('Confirmar nova senha',{exact:true}).fill(nextPassword);
+ const [passwordResponse]=await Promise.all([page.waitForResponse(response=>response.url().includes('/functions/v1/password-actions')&&response.request().method()==='POST'),page.getByRole('button',{name:'Salvar nova senha',exact:true}).click()]);
+ assert.equal(passwordResponse.status(),200,JSON.stringify(await passwordResponse.json()));
  await page.getByLabel('Senha',{exact:true}).waitFor();
  assert.equal(sql('select completed_at is not null from public.pilot_authorization_requests where id='+approvedReq),'t');
  assert.equal(sql("select raw_app_meta_data ? 'laudos_password_permit' from auth.users where id='"+uid+"'"),'f');

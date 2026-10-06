@@ -63,6 +63,7 @@ jobs:
         run: |
           mkdir -p test-results
           if [ -f /tmp/laudos-functions.log ]; then cp /tmp/laudos-functions.log test-results/password-edge-runtime.log; fi
+          if [ -f /tmp/laudos-local.env ]; then set -a; source /tmp/laudos-local.env; set +a; node tests/auth-runtime-diagnostics.cjs; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
