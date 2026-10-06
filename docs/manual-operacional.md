@@ -1,7 +1,28 @@
 # Laudos Agudos — Manual operacional
 
 Fábricas Químicas - Agudos
-Atualizado em 05/10/2026
+Atualizado em 06/10/2026
+
+## Senhas e recuperação de acesso
+
+Alterar senha ou solicitar um reset autorizado.
+
+1. Esqueceu a senha? No login, clique em Esqueci minha senha e informe seu e-mail. A solicitação entrará em Autorizações; nenhum reset automático por e-mail será liberado.
+2. Supervisor ou Administrador confere sua identidade, decide a solicitação e entrega pessoalmente o código de uso único. O Supervisor respeita a hierarquia de usuários; ninguém aprova o próprio reset.
+3. No login, use Já tenho um código autorizado. Informe e-mail, código, Nova senha e Confirmar nova senha. Se entrar com a senha antiga após a aprovação, a definição da nova senha será obrigatória.
+4. O código vale por 24 horas, é bloqueado após 5 tentativas incorretas e não pode ser reutilizado após a conclusão. Para renovar código perdido, expirado ou bloqueado, procure o responsável. O código anterior será invalidado.
+5. Conhece a senha atual? Use Alterar senha, junto à sua conta no menu. Informe Senha atual, Nova senha e Confirmar nova senha. Não exige autorização.
+6. Após qualquer troca de senha, as sessões são encerradas. Entre novamente com a nova senha.
+
+> A senha é gerenciada pelo Supabase. Não entregue a nova senha ao responsável e não a registre em justificativas. O histórico guarda somente os eventos de solicitação, decisão e conclusão.
+
+## Resina para Agudos-MDF2
+
+Transferência por tubulação e dados de transporte.
+
+Quando a família do produto do Ciclo de tanque é Resina e o destino é Agudos-MDF2, transportadora e placa são opcionais. Não preencha N/A ou valores fictícios. A mesma exceção não vale para Emulsão, que continua exigindo os dois campos.
+
+Nas unidades de Agudos, pode ser dispensada a análise do caminhão. A referência do tanque continua existindo e é utilizada; resultados fora da especificação continuam exigindo autorização de exceção.
 
 ## 1. Visão geral e fluxo de trabalho
 
@@ -184,6 +205,18 @@ No carregamento, escolha a unidade e o setor exatos no menu Unidade / destino. E
 As opções disponíveis abaixo são lidas do mesmo cadastro utilizado no formulário de carregamento. Na versão baixada pelo botão da ajuda, a relação corresponde ao cadastro carregado naquele momento.
 
 > Um registro antigo que diga somente Itapetininga ou Uberaba não permite identificar MDF, MDP ou Revestidos com segurança. Preserve o texto original; não complete um setor por suposição. Novos carregamentos devem usar uma opção específica disponível.
+
+- Agudos - MDF1
+- Agudos - MDF2
+- Agudos - Revestidos
+- Itapetininga - MDF
+- Itapetininga - MDP
+- Itapetininga - Revestidos
+- Uberaba - MDF
+- Uberaba - MDP
+- Uberaba - Revestidos
+- Taquari - MDP
+- Taquari - Revestidos
 
 ## 13. Entender os estados do registro
 
