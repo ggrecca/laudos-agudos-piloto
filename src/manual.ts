@@ -3,7 +3,7 @@ export type ManualBlock =
  | {kind:"steps"|"list";items:string[]}
  | {kind:"table";headers:string[];rows:string[][]};
 export type ManualSection={id:string;title:string;summary:string;blocks:ManualBlock[]};
-export const manualUpdated="05/10/2026";
+export const manualUpdated="06/10/2026";
 export const manualSections:ManualSection[]=[
  {id:"senhas",title:"Senhas e recuperação de acesso",summary:"Alterar senha ou solicitar um reset autorizado.",blocks:[
  {kind:"steps",items:["Esqueceu a senha? No login, clique em Esqueci minha senha e informe seu e-mail. A solicitação entrará em Autorizações; nenhum reset automático por e-mail será liberado.","Supervisor ou Administrador confere sua identidade, decide a solicitação e entrega pessoalmente o código de uso único. O Supervisor respeita a hierarquia de usuários; ninguém aprova o próprio reset.","No login, use Já tenho um código autorizado. Informe e-mail, código, Nova senha e Confirmar nova senha. Se entrar com a senha antiga após a aprovação, a definição da nova senha será obrigatória.","O código vale por 24 horas, é bloqueado após 5 tentativas incorretas e não pode ser reutilizado após a conclusão. Para renovar código perdido, expirado ou bloqueado, procure o responsável. O código anterior será invalidado.","Conhece a senha atual? Use Alterar senha, junto à sua conta no menu. Informe Senha atual, Nova senha e Confirmar nova senha. Não exige autorização.","Após qualquer troca de senha, as sessões são encerradas. Entre novamente com a nova senha."]},

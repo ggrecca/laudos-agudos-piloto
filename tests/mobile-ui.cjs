@@ -117,7 +117,7 @@ async function capture(page,name,width){
     }
     if(name==='manual'){
      // New operational help chapters are intentionally changed; real-flow tests verify all 17 chapters and their download.
-     for(const fixture of [before,after])await fixture.page.locator('.manual-layout').evaluate(el=>el.style.visibility='hidden');
+     for(const fixture of [before,after]){await fixture.page.locator('.manual-layout').evaluate(el=>el.style.visibility='hidden');await fixture.page.getByRole('dialog',{name:'Manual operacional'}).locator('small').filter({hasText:'Atualizado em'}).evaluate(el=>el.textContent='Atualizado em 06/10/2026 · Seu perfil: Administrador');}
     }
     if(name==='form'||name==='certificate'){
      const oldBox=await before.page.locator('.action-column').boundingBox(),newBox=await after.page.locator('.action-column').boundingBox();

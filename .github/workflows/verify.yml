@@ -31,7 +31,7 @@ jobs:
           cp supabase/003_security_hardening.sql supabase/migrations/20260901000003_security.sql
           mv supabase/migrations/20261002180915_official_product_evolution.sql /tmp/laudos-evolution.sql
           mv supabase/migrations/20261005225810_agudos_reference_reuse.sql /tmp/laudos-agudos-reference.sql
-          mv supabase/migrations/20261006002442_password_workflows_and_pipeline.sql /tmp/laudos-password-pipeline.sql
+          mv supabase/migrations/20261006013239_password_workflows_and_pipeline.sql /tmp/laudos-password-pipeline.sql
           supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
           supabase status -o env > /tmp/laudos-local.env
           set -a

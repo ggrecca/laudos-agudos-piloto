@@ -23,6 +23,21 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
       if (!element || document.body.classList.contains("manual-printing")) return;
       element.style.zoom = "1";
       element.style.removeProperty("--certificate-print-width");
+      // Some browsers dispatch beforeprint before applying print media styles.
+      // Measure using the existing print rules, so screen paddings do not cause
+      // an unnecessary reduction. This temporary sheet does not duplicate CSS.
+      const printRules: string[] = [];
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          for (const rule of Array.from(sheet.cssRules)) {
+            if (rule instanceof CSSMediaRule && rule.conditionText === "print")
+              printRules.push(...Array.from(rule.cssRules, child => child.cssText));
+          }
+        } catch { /* Cross-origin font sheets have no application print rules. */ }
+      }
+      const measuringStyles = document.createElement("style");
+      measuringStyles.textContent = printRules.join("\n");
+      document.head.append(measuringStyles);
       // A4, 10mm margins: 277mm available height, with a small rounding reserve.
       const page = document.createElement("div");
       page.style.cssText = "position:absolute;visibility:hidden;height:277mm;width:0";
@@ -32,6 +47,7 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
       const scale = Math.min(1, available / Math.max(element.scrollHeight, element.getBoundingClientRect().height));
       element.style.zoom = String(scale);
       element.style.setProperty("--certificate-print-width", `${190 / scale}mm`);
+      measuringStyles.remove();
     };
     const restore = () => { if (certificate.current) { certificate.current.style.zoom = ""; certificate.current.style.removeProperty("--certificate-print-width"); } };
     window.addEventListener("beforeprint", fit);
