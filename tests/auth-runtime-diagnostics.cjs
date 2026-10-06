@@ -1,12 +1,13 @@
 // Disposable CI stack only. Keep SQL/Auth error codes; redact credentials.
 const fs=require('node:fs');
-const {execFileSync}=require('node:child_process');
+const {execFileSync,spawnSync}=require('node:child_process');
 if(!/^http:\/\/(127\.0\.0\.1|localhost):54321/.test(process.env.API_URL||''))process.exit(0);
 let lines=[];
 try{
  const names=execFileSync('docker',['ps','--filter','name=supabase_auth_','--format','{{.Names}}'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
  for(const name of names){
-  const result=execFileSync('docker',['logs',name],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
+  const processResult=spawnSync('docker',['logs',name],{encoding:'utf8'});
+  const result=(processResult.stdout||'')+'\n'+(processResult.stderr||'');
   for(const line of result.split('\n')){try{const entry=JSON.parse(line);if(entry.error)lines.push(String(entry.error));}catch{}}
  }
 }catch{}

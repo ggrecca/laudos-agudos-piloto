@@ -72,7 +72,7 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  await page.getByLabel('Confirmar nova senha',{exact:true}).fill(nextPassword);
  const [passwordResponse]=await Promise.all([page.waitForResponse(response=>response.url().includes('/functions/v1/password-actions')&&response.request().method()==='POST'),page.getByRole('button',{name:'Salvar nova senha',exact:true}).click()]);
  assert.equal(passwordResponse.status(),200,JSON.stringify(await passwordResponse.json()));
- await page.getByLabel('Senha',{exact:true}).waitFor();
+ try { await page.getByLabel('Senha',{exact:true}).waitFor(); } catch(error) { fs.writeFileSync('test-results/password-screen.txt',await page.locator('body').innerText()); console.log('PASSWORD_DIAGNOSTIC',JSON.stringify({completed:sql('select completed_at is not null from public.pilot_authorization_requests where id='+approvedReq),sessions:sql("select count(*) from auth.sessions where user_id='"+uid+"'"),screen:await page.locator('body').innerText()}));throw error;}
  assert.equal(sql('select completed_at is not null from public.pilot_authorization_requests where id='+approvedReq),'t');
  assert.equal(sql("select raw_app_meta_data ? 'laudos_password_permit' from auth.users where id='"+uid+"'"),'f');
  assert.equal((await endpoint({action:'reset',email,code:authorization.code,password:'Another-local-83!',confirmation:'Another-local-83!'})).status,400);

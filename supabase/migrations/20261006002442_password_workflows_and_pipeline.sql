@@ -53,7 +53,7 @@ grant execute on function public.pilot_password_state() to authenticated;
 create function pilot_private.can_administer_password_reset(p_id uuid) returns boolean language sql stable security definer set search_path='' as $$
  select pilot_private.can('password_resets.decide') and p_id<>auth.uid() and exists(
  select 1 from public.pilot_profiles where id=p_id and
- (pilot_private.role()='Administrador' or role in ('Operador Técnico','Operador A','Consulta')))
+ (pilot_private.role()='Administrador' or pilot_private.rank(role)<pilot_private.rank(pilot_private.role())))
 $$;
 revoke all on function pilot_private.can_administer_password_reset(uuid) from public,anon;
 grant execute on function pilot_private.can_administer_password_reset(uuid) to authenticated;
@@ -79,7 +79,7 @@ begin
  if not p.active or p.status<>'Ativo' then return; end if;
  if exists(select 1 from public.pilot_authorization_requests where password_user_id=u.id and kind='reset_password' and decision in ('pending','approved') and completed_at is null) then return; end if;
  insert into public.pilot_authorization_requests(kind,password_user_id,requester_id,requester_name,requested_at,reason)
- values('reset_password',u.id,u.id,coalesce(nullif(p.name,''),u.email),now(),'Solicitação pela tela de login. Identidade ainda não comprovada; conferir pessoalmente antes de entregar o código.') returning id into rid;
+ values('reset_password',u.id,u.id,coalesce(nullif(trim(p.name),''),u.email),now(),'Solicitação pela tela de login. Identidade ainda não comprovada; conferir pessoalmente antes de entregar o código.') returning id into rid;
  insert into public.pilot_audit(actor_id,action,entity,entity_id,details) values(null,'solicitou reset de senha','password_reset',rid,jsonb_build_object('user_id',u.id,'identity_verified',false));
 end $$;
 
@@ -96,7 +96,7 @@ begin
  -- An expired/locked code may be renewed, but every renewal has an audit event.
  if r.decision='approved' and not p_approve then raise exception 'Uma aprovação já concedida não pode ser reescrita'; end if;
  if r.decision='pending' then
- update public.pilot_authorization_requests set decision=case when p_approve then 'approved' else 'rejected' end,actor_id=actor.id,actor_name=actor.name,actor_role=actor.role,decided_at=now(),decision_reason=trim(p_reason) where id=r.id;
+ update public.pilot_authorization_requests set decision=case when p_approve then 'approved' else 'rejected' end,actor_id=actor.id,actor_name=pilot_private.identity_name(),actor_role=actor.role,decided_at=now(),decision_reason=trim(p_reason) where id=r.id;
  end if;
  if p_approve then
  delete from pilot_private.password_change_permits where request_id=r.id;
