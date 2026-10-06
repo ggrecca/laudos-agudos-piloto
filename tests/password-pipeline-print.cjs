@@ -100,9 +100,16 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  sql("update pilot_private.password_reset_secrets set expires_at=now()-interval '1 second' where request_id="+lockedReq);
  assert.equal((await endpoint({action:'reset',email,code:renewed.code,password:'Locked-local-81!',confirmation:'Locked-local-81!'})).status,400);
  const finalCode=await rpc(admin,'pilot_decide_password_reset',{p_id:lockedReq,p_approve:true,p_reason:'Administrador conferiu novamente o titular'});
- assert.equal((await endpoint({action:'reset',email,code:finalCode.code,password:nextPassword,confirmation:nextPassword})).status,400,'Same password must fail without consuming authorization');
+ // Inject a transaction failure AFTER the consumption guard in the disposable DB.
+ // This verifies rollback, not an invented requirement to reject the old password.
+ sql("create function public.ci_fail_password_commit() returns trigger language plpgsql as $$ begin raise exception 'CI simulated Auth commit failure'; end $$; create constraint trigger zz_ci_password_failure after update on auth.users deferrable initially deferred for each row when(old.encrypted_password is distinct from new.encrypted_password) execute function public.ci_fail_password_commit();");
+ try { assert.equal((await endpoint({action:'reset',email,code:finalCode.code,password:'Unlocked-local-92!',confirmation:'Unlocked-local-92!'})).status,400,'Failed Auth commit must preserve the authorization'); }
+ finally { sql('drop trigger zz_ci_password_failure on auth.users; drop function public.ci_fail_password_commit()'); }
+ assert.equal(sql("select count(*) from pilot_private.password_change_permits where user_id='"+uid+"'"),'0');
  assert.equal(sql('select completed_at is null from public.pilot_authorization_requests where id='+lockedReq),'t');
- assert.equal((await endpoint({action:'reset',email,code:finalCode.code,password:'Unlocked-local-92!',confirmation:'Unlocked-local-92!'})).status,200);
+ await page.getByRole('button',{name:'Esqueci minha senha',exact:true}).click();await page.getByRole('button',{name:'Já tenho um código autorizado',exact:true}).click();
+ await page.getByLabel('E-mail',{exact:true}).fill(email);await page.getByLabel('Código autorizado',{exact:true}).fill(finalCode.code);await page.getByLabel('Nova senha',{exact:true}).fill('Unlocked-local-92!');await page.getByLabel('Confirmar nova senha',{exact:true}).fill('Unlocked-local-92!');await page.getByRole('button',{name:'Salvar nova senha',exact:true}).click();await page.getByLabel('Senha',{exact:true}).waitFor();
+ assert.equal(sql('select completed_at is not null from public.pilot_authorization_requests where id='+lockedReq),'t');
  assert.ifError((await user.auth.signInWithPassword({email,password:'Unlocked-local-92!'})).error);
  // Restore the reference password for the normal-change UI test through the protected API.
  assert.equal((await endpoint({action:'change',current_password:'Unlocked-local-92!',password:nextPassword,confirmation:nextPassword})).status,200);
@@ -115,6 +122,7 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  await page.getByLabel('E-mail',{exact:true}).fill(email);await page.getByLabel('Senha',{exact:true}).fill(nextPassword);await page.getByRole('button',{name:'Entrar',exact:true}).click();await page.locator('.sidebar').waitFor();
  await page.getByRole('button',{name:'Alterar senha',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Alterar senha',exact:true});
+ await dialog.getByLabel('Senha atual',{exact:true}).fill('wrong');await dialog.getByLabel('Nova senha',{exact:true}).fill('Changed-local-95!');await dialog.getByLabel('Confirmar nova senha',{exact:true}).fill('Changed-local-95!');await dialog.getByRole('button',{name:'Alterar senha',exact:true}).click();await dialog.locator('#password-error-current').getByText('Senha atual incorreta.',{exact:true}).waitFor();assert.equal(await dialog.getByLabel('Senha atual',{exact:true}).getAttribute('aria-invalid'),'true');
  await dialog.getByLabel('Senha atual',{exact:true}).fill(nextPassword);await dialog.getByLabel('Nova senha',{exact:true}).fill('Changed-local-95!');await dialog.getByLabel('Confirmar nova senha',{exact:true}).fill('Changed-local-95!');await dialog.getByRole('button',{name:'Alterar senha',exact:true}).click();
  await page.getByLabel('Senha',{exact:true}).waitFor();
  assert.ifError((await user.auth.signInWithPassword({email,password:'Changed-local-95!'})).error);
@@ -133,6 +141,12 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  await denied(operator,'pilot_create_loading',{...loadingArgs(emCycle,'agudos-mdf2','',['7']),p_carrier:''},/transportadora/);
  record('Tubulação: Resina → MDF2 cria/edita/emite sem placa ou transportadora e sem dados fictícios; MDF1 e Emulsão → MDF2 continuam exigindo ambos');
  await page.getByLabel('E-mail',{exact:true}).fill(users.operador.email);await page.getByLabel('Senha',{exact:true}).fill(password);await page.getByRole('button',{name:'Entrar',exact:true}).click();await page.locator('.sidebar').waitFor();
+ await page.locator('.sidebar nav').getByRole('button',{name:'Carregamentos',exact:true}).click();await page.getByRole('button',{name:'Novo carregamento',exact:true}).click();
+ await page.locator('[data-field="cycle_id"] select').selectOption(String(cycle));await page.locator('[data-field="destination"] select').selectOption('agudos-mdf2');
+ await page.getByText('Transportadora (opcional)',{exact:true}).waitFor();await page.getByText('Placa (opcional)',{exact:true}).waitFor();
+ assert.match(await page.getByRole('combobox',{name:'Origem dos resultados',exact:true}).innerText(),/Referência do tanque \(análise do caminhão dispensada em Agudos\)/);
+ await page.locator('[data-field="cycle_id"] select').selectOption(String(emCycle));await page.getByText('Transportadora *',{exact:true}).waitFor();await page.getByText('Placa *',{exact:true}).waitFor();
+ page.once('dialog',dialog=>dialog.accept());
  await page.locator('.sidebar nav').getByRole('button',{name:'Laudos',exact:true}).click();
  const certNumber=sql('select certificate_number from public.pilot_loadings where id='+pipe);
  await page.locator('tbody tr').filter({hasText:certNumber}).click();await page.locator('.certificate').waitFor();await page.locator('.cert-responsibles').getByText('Operador atualizado',{exact:true}).waitFor();
