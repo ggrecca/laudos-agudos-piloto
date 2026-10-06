@@ -1358,3 +1358,42 @@ dialog.help-dialog .manual-index button.manual-topic:hover { background: #e3efe7
 @media screen and (max-width: 620px) {
   .tank-loading-summary dl { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 }
+
+/* Explicit certificate identification rows; the operational desktop layout is preserved. */
+.certificate .cert-product-row { grid-template-columns: minmax(0,1fr) minmax(0,2fr); }
+.certificate .cert-pipeline-row { grid-template-columns: minmax(0,2fr) minmax(0,1fr); }
+.certificate .cert-grid + .cert-grid { margin-top: 16px; }
+.cert-footer { display: flex; justify-content: space-between; gap: 20px; }
+.cert-footer strong { display: block; color: #263e31; margin-top: 5px; font-weight: 600; }
+.account .account-password { display: block; font-size: 12px; margin: 5px 0; padding: 5px 0; }
+.password-dialog { max-height: 90dvh; overflow: auto; }
+@media screen and (max-width:900px) {
+ .sidebar .account button.account-password { grid-column:1;grid-row:3;justify-self:start; }
+ .certificate .cert-product-row, .certificate .cert-pipeline-row { grid-template-columns:1fr; }
+ .cert-footer { flex-direction:column;gap:12px; }
+}
+@media print {
+ @page { size:A4; margin:10mm; }
+ html, body { margin:0;padding:0; }
+ .certificate { width:190mm; max-width:none; box-sizing:border-box; font-size:10px; line-height:1.35; break-inside:avoid; }
+ .certificate .cert-head { gap:10px; padding-bottom:8px; margin-bottom:8px; }
+ .certificate .cert-head img { max-width:125px; }
+ .certificate h2 { font-size:17px; margin:8px 0 12px; }
+ .certificate h3 { font-size:11px; margin:12px 0 6px; }
+ .certificate .cert-grid { gap:8px; margin:0; }
+ .certificate .cert-grid + .cert-grid { margin-top:10px; }
+ .certificate .cert-grid span { font-size:9px;padding:0; }
+ .certificate .cert-grid strong, .certificate .cert-responsibles dd { font-size:10px; margin-top:3px; }
+ .certificate th, .certificate td { font-size:10px; padding:5px 6px; line-height:1.35; }
+ .certificate .result-state { padding:2px 5px; font-size:9px; }
+ .certificate .cert-responsibles { margin-top:12px; padding-top:0; }
+ .certificate .cert-responsibles dl { margin:0;gap:8px; }
+ .certificate .cert-responsibles dt { font-size:9px; }
+ .certificate .cert-authorizations:not(:empty) { margin-top:16px; }
+ .certificate p { font-size:10px; line-height:1.4; margin:4px 0; overflow-wrap:anywhere; }
+ .certificate .cert-authorization { padding:6px 0; margin:0; }
+ .certificate .cert-footer { margin-top:12px; padding-top:8px; font-size:9px; break-inside:avoid; }
+ .certificate .cancelled-banner { padding:6px; font-size:18px; margin-bottom:10px; }
+}
+
+.reset-delivery-code { font-family:monospace; font-size:18px; font-weight:700; overflow-wrap:anywhere; user-select:all; }

@@ -1,9 +1,11 @@
 import { Children, cloneElement, isValidElement, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { PasswordResetAuthorizations } from "./PasswordResetAuthorizations";
+import { PasswordFlow } from "./PasswordFlows";
 import { RecentInput } from "./RecentInput";
 import { OperationalManual } from "./OperationalManual";
 import { can, roleLabel, type Role } from "./permissions";
 import { AuthorizationHistory, UsersManagement, ProductList, CycleHistory, CancellationButton, SpecificationHint, type Request, type ManagedUser, type Version } from "./Management";
-import { liveAnalysisResult, requiresReferenceApproval, resinAge, inspectAnalyses, loadingValidation, cycleValidation, approvalReasons, authorizationNeeds, effectiveLoadingState, errorMessage, type ValidationIssue, type Destination } from "./flow";
+import { isPipelineTransfer, liveAnalysisResult, requiresReferenceApproval, resinAge, inspectAnalyses, loadingValidation, cycleValidation, approvalReasons, authorizationNeeds, effectiveLoadingState, errorMessage, type ValidationIssue, type Destination } from "./flow";
 import { Certificate, type CertificateTrace } from "./Certificate";
 import { createClient, type Session } from "@supabase/supabase-js";
 import {
@@ -342,6 +344,8 @@ export function App() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [passwordMode,setPasswordMode]=useState<"request_reset"|"change"|null>(null);
+  const [passwordRequired,setPasswordRequired]=useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
 
   useEffect(() => {
@@ -371,6 +375,11 @@ export function App() {
     if (profileResult.error) throw profileResult.error;
     const nextProfile = profileResult.data as Profile;
     if (request !== refreshRequest.current) return;
+    const passwordState = await db.rpc("pilot_password_state");
+    if(passwordState.error) throw passwordState.error;
+    if(request !== refreshRequest.current) return;
+    setPasswordRequired(passwordState.data?.required===true);
+    if(passwordState.data?.required){setProfile(nextProfile);setPermissions([]);setLoadings([]);setCycles([]);setRequests([]);return;}
     const active = nextProfile.active && nextProfile.status === "Ativo";
     if (!active) {
       setProfile(nextProfile);
@@ -432,7 +441,7 @@ export function App() {
   }
   useEffect(() => {
     if (session) refresh().catch((e) => { setNoticeTone("error"); setNotice(errorMessage(e)); });
-    else { setProfile(null); setLoadings([]); setApprovals([]); setCertificateTrace(null); }
+    else { setPasswordRequired(false); setProfile(null); setLoadings([]); setApprovals([]); setCertificateTrace(null); }
     return () => { refreshRequest.current += 1; };
   }, [session?.user.id]);
   useEffect(() => {
@@ -663,6 +672,8 @@ export function App() {
         <p>Faltam as variáveis públicas de conexão com o Supabase.</p>
       </div>
     );
+  if (passwordRequired && session) return <main className="login-layout"><PasswordFlow db={db} initialMode="reset" mandatory email={session.user.email} close={()=>{void db.auth.signOut();}} done={message=>{setPasswordRequired(false);setPasswordMode(null);setNotice(message);setNoticeTone("success");}}/></main>;
+  if (!session && passwordMode) return <main className="login-layout"><PasswordFlow db={db} initialMode={passwordMode==="change"?"request_reset":passwordMode} email={email} close={()=>setPasswordMode(null)} done={message=>{setPasswordMode(null);setAuthMode("login");setNotice(message);setNoticeTone("success");}}/></main>;
   if (!session)
     return (
       <main className="login-layout">
@@ -744,6 +755,7 @@ export function App() {
               ? "Ainda não tenho acesso"
               : "Já tenho uma conta"}
           </button>
+          {authMode === "login" && <button type="button" className="text-button" disabled={busy} onClick={()=>{setPasswordMode("request_reset");setNotice("");}}>Esqueci minha senha</button>}
           <ErrorNotice text={notice} />
           <small>
             {authMode === "login"
@@ -861,7 +873,8 @@ export function App() {
   const loadingAnalysis = selectedFormCycle
     ? inspectAnalyses(selectedFormCycle.specifications, loadingForm.values)
     : { errors: [] as string[], exception: false };
-  const loadingIssues = loadingValidation(loadingForm, selectedFormCycle?.specifications, loadingAttempt !== "draft");
+  const pipelineTransfer=isPipelineTransfer(selectedFormCycle?.product_snapshot?.family,loadingForm.destination);
+  const loadingIssues = loadingValidation({...loadingForm, productFamily:selectedFormCycle?.product_snapshot?.family}, selectedFormCycle?.specifications, loadingAttempt !== "draft");
   const cycleIssues = cycleValidation(cycleForm, selectedCycleProduct?.specifications);
   const loadingError = (field: string) => loadingAttempt ? loadingIssues.find(i => i.field === field)?.message : undefined;
   const cycleError = (field: string) => cycleAttempted ? cycleIssues.find(i => i.field === field)?.message : undefined;
@@ -889,7 +902,7 @@ export function App() {
   }
   function submitLoading(action: "draft" | "request" | "issue") {
     setLoadingAttempt(action);
-    const issues = loadingValidation(loadingForm, selectedFormCycle?.specifications, action !== "draft");
+    const issues = loadingValidation({...loadingForm, productFamily:selectedFormCycle?.product_snapshot?.family}, selectedFormCycle?.specifications, action !== "draft");
     if (issues.length) {
       setNoticeTone("error"); setNotice(issues[0].message);
       focusValidation(issues); return;
@@ -978,6 +991,7 @@ export function App() {
         <div className="account">
           <strong>{profile.name || session.user.email}</strong>
           <small>{roleLabel(profile.role)}</small>
+          <button type="button" className="account-password" onClick={()=>{setPasswordMode("change");setMobileMenuOpen(false);}}>Alterar senha</button>
           <button onClick={() => { setMobileMenuOpen(false); db.auth.signOut(); }}>
             <LogOut size={16} /> Sair
           </button>
@@ -1171,7 +1185,7 @@ export function App() {
                       }
                     />
                   </Field>
-                  <Field fieldKey="plate" error={loadingError("plate")} label="Placa *">
+                  <Field fieldKey="plate" error={loadingError("plate")} label={pipelineTransfer?"Placa (opcional)":"Placa *"}>
                     <RecentInput label="Placa" disabled={!newLoading && !editLoading}
                       value={loadingForm.plate} options={suggestions("plate")} placeholder="Digite a placa"
                       onChange={plate => setLoadingForm(f => ({ ...f, plate: plate.toUpperCase() }))} />
@@ -1183,7 +1197,7 @@ export function App() {
                         .map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </Field>
-                  <Field fieldKey="carrier" error={loadingError("carrier")} label="Transportadora *">
+                  <Field fieldKey="carrier" error={loadingError("carrier")} label={pipelineTransfer?"Transportadora (opcional)":"Transportadora *"}>
                     <RecentInput label="Transportadora" disabled={!newLoading && !editLoading}
                       value={loadingForm.carrier} options={suggestions("carrier")} placeholder="Digite a transportadora"
                       onChange={carrier => setLoadingForm(f => ({ ...f, carrier }))} />
@@ -1221,7 +1235,7 @@ export function App() {
                     >
                       <option value="own">Análise do caminhão</option>
                       <option value="ref">
-                        {referenceApprovalRequired ? "Referência do tanque (requer autorização)" : "Referência do tanque (dispensada para Agudos)"}
+                        {referenceApprovalRequired ? "Referência do tanque (requer autorização)" : "Referência do tanque (análise do caminhão dispensada em Agudos)"}
                       </option>
                     </select>
                   </Field>
@@ -1229,13 +1243,14 @@ export function App() {
                 {selectedFormCycle && (
                   <>
                     <h3>Resultados</h3>
-                    {loadingForm.source === "ref" && <p className="helper">Resultados do Ciclo de tanque selecionado. Os valores são preservados. {referenceApprovalRequired ? "O reaproveitamento exige autorização." : "O reaproveitamento é dispensado de autorização para esta unidade de Agudos."} Resultados fora da especificação continuam exigindo autorização de exceção.</p>}
+                    {loadingForm.source === "ref" && <p className="helper">Resultados do Ciclo de tanque selecionado. Os valores são preservados. {referenceApprovalRequired ? "O reaproveitamento exige autorização." : "Para esta unidade de Agudos, a análise do caminhão é dispensada; os resultados de referência do tanque são utilizados sem autorização de reaproveitamento."} Resultados fora da especificação continuam exigindo autorização de exceção.</p>}
                     {currentValues(selectedFormCycle, loadingForm.values, (v) =>
                       setLoadingForm((f) => ({ ...f, values: v })),
                       loadingForm.source === "ref" || (!newLoading && !editLoading),
                     )}
                   </>
                 )}
+                {pipelineTransfer && <p className="helper" role="status">Resina para Agudos-MDF2: transferência por tubulação. Transportadora e placa são opcionais; não preencha dados fictícios.</p>}
                 <Field label="Observações">
                   <RecentInput label="Observações" multiline disabled={!newLoading && !editLoading}
                     value={loadingForm.observation} options={suggestions("observation")}
@@ -1369,6 +1384,7 @@ export function App() {
                 <p>Pendências para decisão e histórico permanente de autorizações.</p>
               </div>
             </div>
+            <PasswordResetAuthorizations requests={requests} db={db} run={run} busy={busy} actorId={session.user.id} canDecide={can(permissions,"password_resets.decide")}/>
             <section className="card">
               <LoadingTable
                 rows={pending}
@@ -2074,6 +2090,7 @@ export function App() {
       </main>
     </div>
     <OperationalManual open={manualOpen} onClose={() => setManualOpen(false)} role={profile.role} destinations={destinations} />
+    {passwordMode === "change" && <div className="modal-backdrop"><PasswordFlow db={db} initialMode="change" close={()=>setPasswordMode(null)} done={message=>{setPasswordMode(null);setNotice(message);setNoticeTone("success");}}/></div>}
     </>
   );
 }

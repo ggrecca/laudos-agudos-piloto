@@ -1,11 +1,14 @@
 export type AnalysisSpec = { name: string; unit?: string; required?: boolean; min?: number; max?: number; qual?: string[] };
 export type AnalysisResult = { status: "conforming" | "nonconforming" | "missing" | "invalid" | "optional" | "informative"; label: string; expected: string; error?: string; reason?: string };
 export type ValidationIssue = { field: string; message: string };
-type LoadingInput = { cycle_id: number; loaded_at: string; plate: string; trailer: string; carrier: string; destination: string; analyst: string; values: string[] };
+type LoadingInput = { cycle_id: number; loaded_at: string; plate: string; trailer: string; carrier: string; destination: string; analyst: string; values: string[]; productFamily?: string };
 type CycleInput = { tank_id: number; product_id: number; manufactured_at: string; lots: string; analyst: string; reference_values: string[] };
 type ApprovalRecord = { loading_id: number; edit_version: number; kind: "reuse" | "exception"; decision: string };
 type LoadingRecord = { id: number; state: string; edit_version: number; source: string; values: string[]; destination_id?: string | null };
 export type Destination = { id: string; name: string; active: boolean; reference_reuse_requires_approval?: boolean };
+export function isPipelineTransfer(family: string | undefined, destinationId: string | null | undefined): boolean {
+  return family === "Resina" && destinationId === "agudos-mdf2";
+}
 export function requiresReferenceApproval(destinationId: string | null | undefined, destinations: Destination[]): boolean {
   return destinations.find(d => d.id === destinationId)?.reference_reuse_requires_approval !== false;
 }
@@ -68,8 +71,10 @@ export function loadingValidation(form: LoadingInput, specifications: AnalysisSp
   const issues: ValidationIssue[] = [];
   if (!form.cycle_id || !specifications) issues.push({ field: "cycle_id", message: "Selecione um ciclo." });
   if (!form.loaded_at || !Number.isFinite(Date.parse(form.loaded_at))) issues.push({ field: "loaded_at", message: "Informe a data e hora do carregamento." });
-  if (form.plate.trim().length < 7) issues.push({ field: "plate", message: "Informe uma placa válida (mínimo de 7 caracteres)." });
-  const required = { trailer: "Selecione a carreta.", carrier: "Informe a transportadora.", destination: "Selecione a unidade.", analyst: "Informe o responsável pela análise." };
+  const pipeline = isPipelineTransfer(form.productFamily, form.destination);
+  if ((!pipeline || form.plate.trim()) && form.plate.trim().length < 7) issues.push({ field: "plate", message: "Informe uma placa válida (mínimo de 7 caracteres)." });
+  if (!pipeline && !form.carrier.trim()) issues.push({ field: "carrier", message: "Informe a transportadora." });
+  const required = { trailer: "Selecione a carreta.", destination: "Selecione a unidade.", analyst: "Informe o responsável pela análise." };
   Object.entries(required).forEach(([field, message]) => {
     if (!String(form[field as keyof typeof required] ?? "").trim()) issues.push({ field, message });
   });

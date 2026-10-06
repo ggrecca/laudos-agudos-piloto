@@ -1,4 +1,5 @@
-import { analysisResult } from "./flow";
+import { useEffect, useRef } from "react";
+import { analysisResult, isPipelineTransfer } from "./flow";
 import { roleLabel } from "./permissions";
 import type { Request } from "./Management";
 import type { Loading, Cycle, Product, Tank } from "./pilot";
@@ -15,26 +16,50 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
   loading: Loading; cycle: Cycle | undefined; product: Product | undefined; tank: Tank | undefined;
   trace: CertificateTrace | null; traceError: string; retry: () => void; cancellation?: Request;
 }) {
+  const certificate = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const fit = () => {
+      const element = certificate.current;
+      if (!element || document.body.classList.contains("manual-printing")) return;
+      element.style.zoom = "1";
+      // A4, 10mm margins: 277mm available height, with a small rounding reserve.
+      const page = document.createElement("div");
+      page.style.cssText = "position:absolute;visibility:hidden;height:277mm;width:0";
+      document.body.append(page);
+      const available = page.getBoundingClientRect().height - 6;
+      page.remove();
+      element.style.zoom = String(Math.min(1, available / Math.max(element.scrollHeight, element.getBoundingClientRect().height)));
+    };
+    const restore = () => { if (certificate.current) certificate.current.style.zoom = ""; };
+    window.addEventListener("beforeprint", fit);
+    window.addEventListener("afterprint", restore);
+    return () => { window.removeEventListener("beforeprint", fit); window.removeEventListener("afterprint", restore); };
+  }, []);
+  const pipeline = isPipelineTransfer(cycle?.product_snapshot?.family, loading.destination_id);
+  const origin = loading.source === "ref" ? "Análises de referência do Ciclo de tanque" : "Análises do caminhão";
   const rows = cycle?.specifications.map((spec, i) => ({ spec, value: loading.values[i] ?? "", result: analysisResult(spec, loading.values[i]) })) ?? [];
-  return <section className={"card certificate" + (loading.state==="Cancelado"?" cancelled-certificate":"")} aria-label={"Laudo " + loading.certificate_number}>
+  return <section ref={certificate} className={"card certificate" + (loading.state==="Cancelado"?" cancelled-certificate":"")} aria-label={"Laudo " + loading.certificate_number}>
     {loading.state==="Cancelado"&&<div className="cancelled-banner">CANCELADO</div>}
     <div className="cert-head">
       <div><img src="/dexco-logo.png" alt="Dexco" width={160} /><strong>Fábricas Químicas - Agudos</strong></div>
       <span>Certificado de qualidade</span>
     </div>
     <h2>Laudo {loading.certificate_number}</h2>
-    <div className="cert-grid">
-      <span>Produto / código<strong>{product?.name || "Não disponível"} · {product?.code || "—"}</strong></span>
+    <div className="cert-grid cert-product-row">
       <span>Família<strong>{product?.family || "—"}</strong></span>
-      <span>Tanque / Ciclo de tanque<strong>{tank?.code || "—"} · Ciclo de tanque {loading.cycle_id}</strong></span>
+      <span>Produto / código<strong>{product?.name || "Não disponível"} · {product?.code || "—"}</strong></span>
+    </div>
+    <div className="cert-grid">
       <span>Lotes<strong>{cycle?.lots || "—"}</strong></span>
       <span>Fabricação<strong>{date(cycle?.manufactured_at ?? null)}</strong></span>
-      <span>Placa / carreta<strong>{loading.plate} · {loading.trailer}</strong></span>
+      <span>Tanque / Ciclo de tanque<strong>{tank?.code || "—"} · Ciclo de tanque {loading.cycle_id}</strong></span>
+    </div>
+    <div className={"cert-grid" + (pipeline && !loading.carrier && !loading.plate ? " cert-pipeline-row" : "")}>
+      {pipeline && !loading.carrier && !loading.plate ? <span>Transferência<strong>Por tubulação</strong></span> : <>
+        <span>Transportadora<strong>{loading.carrier || (pipeline ? "Transferência por tubulação" : "Não informada")}</strong></span>
+        <span>Placa do veículo / carreta<strong>{loading.plate ? loading.plate + " · " + loading.trailer : pipeline ? "Transferência por tubulação" : "Não informada"}</strong></span>
+      </>}
       <span>Unidade / destino<strong>{loading.destination}</strong></span>
-      <span>Transportadora<strong>{loading.carrier}</strong></span>
-      <span>Carregamento<strong>{new Date(loading.loaded_at).toLocaleDateString("pt-BR")}</strong></span>
-      <span>Emissão<strong>{date(loading.issued_at)}</strong></span>
-      <span>Origem dos resultados<strong>{loading.source === "ref" ? "Análises de referência do Ciclo de tanque" : "Análises do caminhão"}</strong></span>
     </div>
     <h3>Resultados e situação por variável</h3>
     <div className="table-wrap">
@@ -65,6 +90,6 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
     </section>
     {cancellation&&<section className="cert-cancellation"><h3>Registro do cancelamento</h3><p>Solicitado por {cancellation.requester_name||"Não registrado"} · {date(cancellation.requested_at)}</p><p>Motivo: {cancellation.reason}</p><p>Autorizado por {cancellation.actor_name||"Não registrado"} · {date(cancellation.decided_at)}</p><p>Justificativa: {cancellation.decision_reason}</p></section>}
     <section className="cert-observations"><h3>Observações</h3><p>{loading.observation.trim() || "Sem observações adicionais."}</p></section>
-    <footer className="cert-footer">Registro CAR-{String(loading.id).padStart(4, "0")} · Ciclo de tanque {loading.cycle_id} · Versão dos dados {loading.edit_version}</footer>
+    <footer className="cert-footer"><span>Data de emissão<strong>{date(loading.issued_at)}</strong></span><span>Origem dos resultados<strong>{origin}</strong></span></footer>
   </section>;
 }

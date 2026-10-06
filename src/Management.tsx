@@ -7,7 +7,8 @@ import { roleLabel, roles, roleRank, type Role } from "./permissions";
 import type { Product, Cycle, Tank, Loading, Spec } from "./pilot";
 
 export type Request = {
- id:number; kind:"reuse"|"exception"|"cancel_cycle"|"cancel_certificate"; cycle_id:number|null; loading_id:number|null;
+ id:number; kind:"reuse"|"exception"|"cancel_cycle"|"cancel_certificate"|"reset_password"; cycle_id:number|null; loading_id:number|null;
+ password_user_id?:string|null; completed_at?:string|null;
  edit_version:number|null; requester_name:string|null; requested_at:string|null; reason:string;
  decision:"pending"|"approved"|"rejected"|"superseded"; actor_name:string|null; actor_role:string|null;
  decision_reason:string|null; decided_at:string|null; legacy:boolean;
@@ -15,7 +16,7 @@ export type Request = {
 export type ManagedUser = {id:string;name:string;email:string;role:Role;status:string;active:boolean;created_at:string};
 export type Run = (task:()=>PromiseLike<{error:{message:string}|null;data?:unknown}>,message:string,after?:(data:unknown)=>void)=>Promise<void>;
 const date = (s:string|null|undefined) => s ? new Date(s).toLocaleString("pt-BR") : "Não registrado";
-const kindLabel = (kind:Request["kind"]) => ({reuse:"Uso das análises do tanque",exception:"Exceção de especificação",cancel_cycle:"Cancelamento de Ciclo de tanque",cancel_certificate:"Cancelamento de laudo"})[kind];
+const kindLabel = (kind:Request["kind"]) => ({reuse:"Uso das análises do tanque",exception:"Exceção de especificação",cancel_cycle:"Cancelamento de Ciclo de tanque",cancel_certificate:"Cancelamento de laudo",reset_password:"Reset de senha"})[kind];
 const decisionLabel = (d:Request["decision"]) => ({pending:"Pendente",approved:"Aprovada",rejected:"Rejeitada",superseded:"Substituída"})[d];
 function Field({label,children}:{label:string;children:ReactNode}) {
  const controls=Children.map(children,c=>isValidElement<{"aria-label"?:string}>(c)&&typeof c.type==="string"?cloneElement(c,{"aria-label":c.props["aria-label"]||label}):c);
@@ -42,12 +43,12 @@ export function AuthorizationHistory({requests,open,db,run,busy,canDecide}:{requ
  <section className="card"><h2>Histórico de autorizações</h2><div className="filter-bar">
  <Field label="Buscar solicitante, autorizador ou registro"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Nome, motivo ou referência…"/></Field>
  <Field label="Decisão"><select value={status} onChange={e=>setStatus(e.target.value)}><option value="treated">Concluídas</option><option value="all">Todas</option>{["pending","approved","rejected","superseded"].map(d=><option key={d} value={d}>{decisionLabel(d as Request["decision"])}</option>)}</select></Field>
- <Field label="Tipo"><select value={kind} onChange={e=>setKind(e.target.value)}><option value="all">Todos</option>{["reuse","exception","cancel_cycle","cancel_certificate"].map(k=><option key={k} value={k}>{kindLabel(k as Request["kind"])}</option>)}</select></Field>
+ <Field label="Tipo"><select value={kind} onChange={e=>setKind(e.target.value)}><option value="all">Todos</option>{["reuse","exception","cancel_cycle","cancel_certificate","reset_password"].map(k=><option key={k} value={k}>{kindLabel(k as Request["kind"])}</option>)}</select></Field>
  <Field label="De"><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></Field><Field label="Até"><input type="date" value={to} onChange={e=>setTo(e.target.value)}/></Field>
  </div><div className="table-wrap"><table className="mobile-record-table authorization-record-table"><thead><tr><th>Solicitação / registro</th><th>Solicitante / motivo</th><th>Decisão</th><th>Responsável / justificativa</th><th>Datas</th></tr></thead><tbody>
- {filtered.map(r=><tr key={r.id}><td data-label="Solicitação / registro"><button className="text-button" onClick={()=>open(r)}>{kindLabel(r.kind)} · #{r.cycle_id??r.loading_id}</button><small>Solicitação #{r.id}{r.edit_version ? " · versão "+r.edit_version : ""}</small></td>
- <td data-label="Solicitante / motivo">{r.requester_name||"Não registrado"}<small>{r.reason}</small></td><td data-label="Decisão"><span className={"pill "+(r.decision==="pending"?"amber":r.decision==="rejected"?"red":"")}>{decisionLabel(r.decision)}</span></td>
- <td data-label="Responsável / justificativa">{r.actor_name||"—"}{r.actor_role&&<small>{roleLabel(r.actor_role)}</small>}<small>{r.decision_reason||"—"}</small></td><td data-label="Datas"><small>Solicitada: {date(r.requested_at)}</small><small>Decidida: {date(r.decided_at)}</small></td></tr>)}
+ {filtered.map(r=><tr key={r.id}><td data-label="Solicitação / registro">{r.kind==="reset_password"?<strong>Reset de senha · {r.requester_name}</strong>:<button className="text-button" onClick={()=>open(r)}>{kindLabel(r.kind)} · #{r.cycle_id??r.loading_id}</button>}<small>Solicitação #{r.id}{r.edit_version ? " · versão "+r.edit_version : ""}</small></td>
+ <td data-label="Solicitante / motivo">{r.requester_name||"Não registrado"}<small>{r.reason}</small></td><td data-label="Decisão"><span className={"pill "+(r.decision==="pending"?"amber":r.decision==="rejected"?"red":"")}>{r.completed_at?"Concluída · código consumido":r.kind==="reset_password"&&r.decision==="approved"?"Aprovada · nova senha pendente":decisionLabel(r.decision)}</span></td>
+ <td data-label="Responsável / justificativa">{r.actor_name||"—"}{r.actor_role&&<small>{roleLabel(r.actor_role)}</small>}<small>{r.decision_reason||"—"}</small></td><td data-label="Datas"><small>Solicitada: {date(r.requested_at)}</small><small>Decidida: {date(r.decided_at)}</small>{r.completed_at&&<small>Nova senha definida: {date(r.completed_at)}</small>}</td></tr>)}
  </tbody></table></div>{filtered.length===0&&<p className="empty">Nenhuma autorização neste filtro.</p>}</section>
  {decision&&<div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-label="Decisão de cancelamento"><h2>{decision.approve?"Autorizar cancelamento":"Rejeitar cancelamento"}</h2><p>{decision.r.reason}</p>
  <Field label="Justificativa obrigatória"><textarea autoFocus value={reason} onChange={e=>setReason(e.target.value)}/></Field><div className="actions"><button disabled={busy} onClick={()=>setDecision(null)}>Voltar</button><button className="primary" disabled={busy||reason.trim().length<3} onClick={()=>run(()=>db.rpc("pilot_decide_cancellation",{p_request_id:decision.r.id,p_approve:decision.approve,p_reason:reason}),"Decisão registrada.",()=>setDecision(null))}>Registrar decisão</button></div></section></div>}

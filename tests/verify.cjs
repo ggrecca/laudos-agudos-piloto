@@ -233,8 +233,8 @@ let browser,lastPage;
  await issuer.getByText("Operador atualizado",{exact:true}).waitFor();assert.equal(await issuer.innerText(),"Operador atualizado");
  const certFields=await page.locator(".cert-grid > span").allTextContents();
  assert.ok(!certFields.some(field=>field.startsWith("Especificação")));
- assert.match(certFields.find(field=>field.startsWith("Carregamento")),/^Carregamento\d{2}\/\d{2}\/\d{4}$/);
- assert.match(certFields.find(field=>field.startsWith("Emissão")),/\d{2}:\d{2}/);
+ assert.ok(!certFields.some(field=>field.startsWith("Carregamento")));
+ assert.match(await page.locator(".cert-footer").innerText(),/Data de emissão[\s\S]*\d{2}:\d{2}/);
  await page.screenshot({path:"test-results/certificate-1440.png",fullPage:true});console.log("VISUAL_CERTIFICATE:"+ (await page.screenshot({type:"jpeg",quality:65})).toString("base64"));
  record("Navegador: carregamento, erro localizado, unidade estruturada, rascunho e emissão real");
 
@@ -251,7 +251,7 @@ let browser,lastPage;
  await closedDialog.getByRole("heading",{name:/Encerrado/}).waitFor();
  assert.equal(await closedDialog.getByRole("button").count(),1);
  await closedDialog.getByRole("button",{name:"Fechar",exact:true}).click();
- record("Navegador: laudo sem perfil do emissor/versão da especificação, carregamento só com data, emissão com horário e histórico encerrado sem botão redundante");
+ record("Navegador: laudo sem perfil do emissor/versão da especificação, data do carregamento omitida, emissão com horário e histórico encerrado sem botão redundante");
  await page.locator(".card-grid .card").filter({hasText:"WEB-LOTE"}).getByRole("button",{name:"Novo carregamento",exact:true}).click();
  await page.getByRole("combobox",{name:"Placa",exact:true}).fill("WEB5678");
  await page.getByRole("combobox",{name:"Transportadora",exact:true}).fill("Transportadora WEB");
@@ -317,6 +317,7 @@ let browser,lastPage;
  for(const width of [1280,1920]){await page.setViewportSize({width,height:1000});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));await page.screenshot({path:"test-results/certificate-"+width+".png",fullPage:true});}
  assert.equal(await page.locator("body").getByText(/piloto|protótipo/i).count(),0);
  await require('./loading-improvements.cjs')({browser,users,password,sql,record,rpc,denied,root,consoleErrors});
+ await require('./password-pipeline-print.cjs')({browser,users,password,sql,record,rpc,denied,root,consoleErrors,cycle:c1,product,loadingArgs});
  await require('./mobile-flows.cjs')({browser,users,password,sql,record,consoleErrors});
  assert.deepEqual(consoleErrors,[]);
  record("Navegador: Consulta global, laudo CANCELADO consultável, desktop 1280/1440/1920 e console sem erros");

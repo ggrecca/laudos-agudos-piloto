@@ -31,6 +31,7 @@ jobs:
           cp supabase/003_security_hardening.sql supabase/migrations/20260901000003_security.sql
           mv supabase/migrations/20261002180915_official_product_evolution.sql /tmp/laudos-evolution.sql
           mv supabase/migrations/20261005225810_agudos_reference_reuse.sql /tmp/laudos-agudos-reference.sql
+          mv supabase/migrations/20261006002442_password_workflows_and_pipeline.sql /tmp/laudos-password-pipeline.sql
           supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
           supabase status -o env > /tmp/laudos-local.env
           set -a
@@ -39,6 +40,7 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/migration-legacy.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/laudos-evolution.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/laudos-agudos-reference.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/laudos-password-pipeline.sql
       - name: Run database, Auth, RLS and browser flows
         run: |
           set -a
@@ -46,6 +48,7 @@ jobs:
           set +a
           export VITE_SUPABASE_URL="$API_URL"
           export VITE_SUPABASE_PUBLISHABLE_KEY="$ANON_KEY"
+          supabase functions serve password-actions --no-verify-jwt > /tmp/laudos-functions.log 2>&1 &
           pnpm exec vite --host 127.0.0.1 > /tmp/laudos-vite.log 2>&1 &
           npm install --prefix /tmp/laudos-test playwright
           /tmp/laudos-test/node_modules/.bin/playwright install --with-deps chromium
