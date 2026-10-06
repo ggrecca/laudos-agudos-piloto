@@ -48,11 +48,19 @@ $$;
 revoke all on function public.pilot_password_state() from public,anon;
 grant execute on function public.pilot_password_state() to authenticated;
 
+-- Profile rows themselves are protected by self-only RLS. This narrow helper
+-- evaluates hierarchy without granting supervisors direct profile-table access.
+create function pilot_private.can_administer_password_reset(p_id uuid) returns boolean language sql stable security definer set search_path='' as $$
+ select pilot_private.can('password_resets.decide') and p_id<>auth.uid() and exists(
+ select 1 from public.pilot_profiles where id=p_id and
+ (pilot_private.role()='Administrador' or role in ('Operador Técnico','Operador A','Consulta')))
+$$;
+revoke all on function pilot_private.can_administer_password_reset(uuid) from public,anon;
+grant execute on function pilot_private.can_administer_password_reset(uuid) to authenticated;
+
 -- Password reset identities are not operational history visible to all operators.
 create policy pilot_password_requests_privacy on public.pilot_authorization_requests as restrictive for select to authenticated
- using(kind<>'reset_password' or password_user_id=(select auth.uid()) or
- (pilot_private.can('password_resets.decide') and exists(select 1 from public.pilot_profiles p where p.id=password_user_id
- and (pilot_private.role()='Administrador' or p.role in ('Operador Técnico','Operador A','Consulta')))));
+ using(kind<>'reset_password' or password_user_id=(select auth.uid()) or pilot_private.can_administer_password_reset(password_user_id));
 
 create function public.pilot_password_rate_limit(p_key text) returns boolean language plpgsql security definer set search_path='' as $$
 declare n integer;
@@ -83,8 +91,7 @@ begin
  if r.id is null or r.completed_at is not null or r.decision not in ('pending','approved') then raise exception 'Solicitação indisponível'; end if;
  select * into actor from public.pilot_profiles where id=auth.uid();
  select * into target from public.pilot_profiles where id=r.password_user_id;
- if actor.id=target.id or not target.active or target.status<>'Ativo' or
- (actor.role='Supervisor' and target.role not in ('Operador Técnico','Operador A','Consulta')) then raise exception 'Acesso negado para este usuário'; end if;
+ if not pilot_private.can_administer_password_reset(target.id) or not target.active or target.status<>'Ativo' then raise exception 'Acesso negado para este usuário'; end if;
  if length(trim(coalesce(p_reason,'')))<3 then raise exception 'Informe a justificativa da decisão'; end if;
  -- An expired/locked code may be renewed, but every renewal has an audit event.
  if r.decision='approved' and not p_approve then raise exception 'Uma aprovação já concedida não pode ser reescrita'; end if;

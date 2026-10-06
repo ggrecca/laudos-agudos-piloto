@@ -1131,7 +1131,7 @@ export function App() {
                 </h1>
                 <p>
                   {newLoading
-                    ? "Informe os dados do carregamento e os resultados da análise."
+                    ? (pipelineTransfer ? "Informe os dados da transferência e os resultados da análise." : "Informe os dados do caminhão e os resultados da análise.")
                     : `Ciclo de tanque ${current!.cycle_id} · ${productFor(currentCycle)?.name || ""}`}
                 </p>
               </div>

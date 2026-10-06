@@ -43,14 +43,25 @@ module.exports=async ({browser,users,password,sql,record,rpc,denied,root,console
  assert.equal(sql('select decision from public.pilot_authorization_requests where id='+req),'rejected');
  assert.equal((await endpoint({action:'request_reset',email})).status,200);
  const approvedReq=Number(sql("select id from public.pilot_authorization_requests where password_user_id='"+uid+"' and decision='pending'"));
- let authorization=await rpc(sup,'pilot_decide_password_reset',{p_id:approvedReq,p_approve:true,p_reason:'Identidade conferida pessoalmente'});assert.match(authorization.code,/^[a-f0-9]{32}$/);
+ const supVisible=await sup.from('pilot_authorization_requests').select('id').eq('id',approvedReq);assert.ifError(supVisible.error);assert.equal(supVisible.data.length,1,'Supervisor must see subordinate reset requests despite profile RLS');
+ await page.getByRole('button',{name:'Voltar',exact:true}).click();
+ await page.getByLabel('E-mail',{exact:true}).fill(users.supervisor.email);await page.getByLabel('Senha',{exact:true}).fill(password);await page.getByRole('button',{name:'Entrar',exact:true}).click();await page.locator('.sidebar').waitFor();
+ await page.locator('.sidebar nav').getByRole('button',{name:'Autorizações',exact:true}).click();
+ await page.getByRole('button',{name:'Autorizar reset',exact:true}).click();
+ const decisionDialog=page.getByRole('dialog',{name:'Decisão de reset de senha',exact:true});
+ await decisionDialog.getByRole('checkbox').check();await decisionDialog.getByLabel('Justificativa da decisão',{exact:true}).fill('Identidade conferida pessoalmente');await decisionDialog.getByRole('button',{name:'Registrar decisão de reset',exact:true}).click();
+ const delivery=page.getByRole('dialog',{name:'Entrega pessoal do código',exact:true});await delivery.waitFor();
+ let authorization={code:(await delivery.locator('.reset-delivery-code').innerText()).replace(/-/g,'')};assert.match(authorization.code,/^[a-f0-9]{32}$/);
+ await delivery.getByRole('button',{name:'Código entregue · fechar',exact:true}).click();
+ await page.getByRole('button',{name:'Sair',exact:true}).click();await page.getByLabel('E-mail',{exact:true}).waitFor();
+ assert.ifError((await sup.auth.signInWithPassword({email:users.supervisor.email,password})).error);
+
  assert.equal((await user.from('pilot_products').select('id')).data.length,0);
  assert.deepEqual(await rpc(user,'pilot_permissions',{}),[]);
  const previousCode=authorization.code;
  authorization=await rpc(sup,'pilot_decide_password_reset',{p_id:approvedReq,p_approve:true,p_reason:'Renovação após conferência pessoal; código perdido'});assert.notEqual(authorization.code,previousCode);
  assert.equal((await endpoint({action:'reset',email,code:previousCode,password:nextPassword,confirmation:nextPassword})).status,400);
  assert.equal((await endpoint({action:'change',current_password:password,password:nextPassword,confirmation:nextPassword})).status,403);
- await page.getByRole('button',{name:'Voltar',exact:true}).click();
  await page.getByLabel('E-mail',{exact:true}).fill(email);await page.getByLabel('Senha',{exact:true}).fill(password);await page.getByRole('button',{name:'Entrar',exact:true}).click();
  await page.getByRole('heading',{name:'Definir nova senha',exact:true}).waitFor();
  assert.equal(await page.locator('.sidebar').count(),0);assert.equal(await page.getByLabel('Senha atual',{exact:true}).count(),0);
