@@ -14,6 +14,12 @@ const {chromium}=require("playwright");
   await page.getByText("Perfis e permissões são definidos pelo responsável pelo Laudos Agudos.",{exact:true}).waitFor();
   assert.equal(await page.getByLabel("E-mail",{exact:true}).count(),1);
   assert.equal(await page.getByLabel("Senha",{exact:true}).count(),1);
+  for (const width of [320,375,430,768,900,1280,1440,1920]) {
+   await page.setViewportSize({width,height:1000});
+   const recovery=await page.getByRole("button",{name:"Esqueci minha senha",exact:true}).boundingBox();
+   const guidance=await page.getByText("Perfis e permissões são definidos pelo responsável pelo Laudos Agudos.",{exact:true}).boundingBox();
+   assert.ok(guidance.y>=recovery.y+recovery.height+8,"Recovery and guidance must be separate rows");
+  }
   await page.getByRole("button",{name:"Esqueci minha senha",exact:true}).click();
   await page.getByRole("heading",{name:"Esqueci minha senha",exact:true}).waitFor();
   await page.getByRole("button",{name:"Já tenho um código autorizado",exact:true}).click();

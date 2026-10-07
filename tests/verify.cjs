@@ -323,6 +323,7 @@ let browser,lastPage;
  await require('./loading-improvements.cjs')({browser,users,password,sql,record,rpc,denied,root,consoleErrors});
  await renewApiSessions();
  await require('./password-pipeline-print.cjs')({browser,users,password,sql,record,rpc,denied,root,consoleErrors,cycle:c1,product,loadingArgs});
+ await require('./login-home-print.cjs')({browser,users,password,sql,record,consoleErrors});
  await require('./mobile-flows.cjs')({browser,users,password,sql,record,consoleErrors});
  assert.deepEqual(consoleErrors,[]);
  record("Navegador: Consulta global, laudo CANCELADO consultável, desktop 1280/1440/1920 e console sem erros");

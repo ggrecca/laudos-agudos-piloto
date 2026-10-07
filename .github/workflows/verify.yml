@@ -52,6 +52,7 @@ jobs:
           pnpm exec vite --host 127.0.0.1 > /tmp/laudos-vite.log 2>&1 &
           npm install --prefix /tmp/laudos-test playwright
           /tmp/laudos-test/node_modules/.bin/playwright install --with-deps chromium
+          if ! command -v pdftoppm >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y poppler-utils; fi
           NODE_PATH=/tmp/laudos-test/node_modules node tests/verify.cjs
       - name: Verify mobile layouts and unchanged desktop pixels
         run: NODE_PATH=/tmp/laudos-test/node_modules node tests/mobile-ui.cjs

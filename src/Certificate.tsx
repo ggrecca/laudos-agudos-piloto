@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { CERTIFICATE_PAGE } from "./certificatePrint";
 import { analysisResult, isPipelineTransfer, resultOrigin } from "./flow";
 import { roleLabel } from "./permissions";
 import type { Request } from "./Management";
@@ -25,13 +26,13 @@ export function Certificate({ loading, cycle, product, tank, trace, traceError, 
       element.style.removeProperty("--certificate-print-width");
       // A4, 10mm margins: 277mm available height, with a small rounding reserve.
       const page = document.createElement("div");
-      page.style.cssText = "position:absolute;visibility:hidden;height:277mm;width:0";
+      page.style.cssText = `position:absolute;visibility:hidden;height:${CERTIFICATE_PAGE.height - 2 * CERTIFICATE_PAGE.margin}mm;width:0`;
       document.body.append(page);
       const available = page.getBoundingClientRect().height - 6;
       page.remove();
       const scale = Math.min(1, available / Math.max(element.scrollHeight, element.getBoundingClientRect().height));
       element.style.zoom = String(scale);
-      element.style.setProperty("--certificate-print-width", `${190 / scale}mm`);
+      element.style.setProperty("--certificate-print-width", `${(CERTIFICATE_PAGE.width - 2 * CERTIFICATE_PAGE.margin) / scale}mm`);
     };
     const restore = () => { if (certificate.current) { certificate.current.style.zoom = ""; certificate.current.style.removeProperty("--certificate-print-width"); } };
     window.addEventListener("beforeprint", fit);

@@ -7,6 +7,7 @@ import { can, roleLabel, type Role } from "./permissions";
 import { AuthorizationHistory, UsersManagement, ProductList, CycleHistory, CancellationButton, SpecificationHint, type Request, type ManagedUser, type Version } from "./Management";
 import { isPipelineTransfer, liveAnalysisResult, requiresReferenceApproval, resinAge, inspectAnalyses, loadingValidation, cycleValidation, approvalReasons, authorizationNeeds, effectiveLoadingState, errorMessage, type ValidationIssue, type Destination } from "./flow";
 import { Certificate, type CertificateTrace } from "./Certificate";
+import { downloadCertificatePdf } from "./certificatePrint";
 import { createClient, type Session } from "@supabase/supabase-js";
 import {
   Home,
@@ -300,6 +301,8 @@ export function App() {
   const [cycleToOpen, setCycleToOpen] = useState<number | null>(null);
   const [productEditingId, setProductEditingId] = useState<number | null>(null);
   const [view, setView] = useState<View>("Início");
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const pdfInFlight = useRef(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [mobileLayout, setMobileLayout] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -446,15 +449,9 @@ export function App() {
     else { setPasswordRequired(false); setProfile(null); setLoadings([]); setApprovals([]); setCertificateTrace(null); }
     return () => { refreshRequest.current += 1; };
   }, [session?.user.id]);
-  useEffect(() => {
-    if (!session?.user.id || profile?.status !== "Ativo") return;
-    const key = `laudos-agudos:onboarding:v1:${session.user.id}`;
-    try {
-      setView(window.localStorage.getItem(key) ? "Carregamentos" : "Início");
-    } catch {
-      setView("Início");
-    }
-  }, [session?.user.id, profile?.status]);
+  // Only a new authenticated identity starts a new visit. Token/data refreshes
+  // preserve the operator's current page; a fresh App starts at Home as well.
+  useEffect(() => { setView("Início"); }, [session?.user.id]);
   const hasAwaitingLoadings = loadings.some(l => l.state === "Aguardando autorização") || requests.some(r=>r.decision==="pending");
   useEffect(() => {
     if (!session?.user.id || profile?.status !== "Ativo") return;
@@ -766,9 +763,9 @@ export function App() {
               ? "Ainda não tenho acesso"
               : "Já tenho uma conta"}
           </button>
-          {authMode === "login" && <button type="button" className="text-button" disabled={busy} onClick={()=>{setPasswordMode("request_reset");setNotice("");}}>Esqueci minha senha</button>}
+          {authMode === "login" && <div className="login-recovery"><button type="button" className="text-button" disabled={busy} onClick={()=>{setPasswordMode("request_reset");setNotice("");}}>Esqueci minha senha</button></div>}
           <ErrorNotice text={notice} />
-          <small>
+          <small className="login-permissions">
             {authMode === "login"
               ? "Perfis e permissões são definidos pelo responsável pelo Laudos Agudos."
               : "Após confirmar o e-mail, seu cadastro ficará pendente até a aprovação."}
@@ -896,6 +893,22 @@ export function App() {
     : (loadingForm.source === "ref" && referenceApprovalRequired) || loadingAnalysis.exception;
   const traceForCurrent = current && certificateTrace?.loading_id === current.id && certificateTrace.edit_version === current.edit_version ? certificateTrace : null;
   const canPrintCertificate = !!(traceForCurrent && currentCycle && productFor(currentCycle) && tankFor(currentCycle));
+  async function saveCertificatePdf() {
+    const element = document.querySelector<HTMLElement>(".certificate");
+    if (!canPrintCertificate || !current?.certificate_number || !element || pdfInFlight.current) return;
+    pdfInFlight.current = true;
+    setPdfBusy(true);
+    const number = current.certificate_number;
+    try {
+      await downloadCertificatePdf(element, number);
+    } catch {
+      setNoticeTone("error");
+      setNotice("Não foi possível gerar o PDF. Tente novamente ou use Imprimir laudo.");
+    } finally {
+      pdfInFlight.current = false;
+      setPdfBusy(false);
+    }
+  }
   const decisionLoading = decision ? loadings.find(l => l.id === decision.id) : undefined;
   const decisionReasons = decisionLoading ? approvalReasons(cycleFor(decisionLoading)?.specifications ?? [], decisionLoading.values, decisionLoading.source, requiresReferenceApproval(decisionLoading.destination_id, destinations)) : [];
   function submitCycle() {
@@ -1150,6 +1163,7 @@ export function App() {
             </div>
             {mobileLayout && current?.certificate_number && <div className="mobile-certificate-actions no-print">
               <button type="button" className="primary" disabled={!canPrintCertificate} onClick={() => window.print()}>Imprimir laudo</button>
+              <button type="button" className="certificate-pdf-action" disabled={!canPrintCertificate || pdfBusy} onClick={saveCertificatePdf}>{pdfBusy ? "Gerando PDF…" : "Baixar PDF"}</button>
             </div>}
             <div className="two-col">
               <LoadingData className="card loading-data">
@@ -1306,9 +1320,10 @@ export function App() {
                   )}
                   {current?.state === "Emitido" && can(permissions,"cancellations.request") && <CancellationButton kind="cancel_certificate" id={current.id} requests={requests} db={db} run={run} busy={busy}/>}
                   {current?.certificate_number && (
-                    <button className="certificate-print-action" disabled={!canPrintCertificate} onClick={() => window.print()}>
-                      Imprimir laudo
-                    </button>
+                    <div className="certificate-output-actions">
+                      <button className="certificate-print-action" disabled={!canPrintCertificate} onClick={() => window.print()}>Imprimir laudo</button>
+                      <button type="button" className="certificate-pdf-action" disabled={!canPrintCertificate || pdfBusy} onClick={saveCertificatePdf}>{pdfBusy ? "Gerando PDF…" : "Baixar PDF"}</button>
+                    </div>
                   )}
                   <p className="helper">
                     Após salvar uma alteração, autorizações anteriores deixam de

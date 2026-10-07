@@ -3,7 +3,7 @@ export type ManualBlock =
  | {kind:"steps"|"list";items:string[]}
  | {kind:"table";headers:string[];rows:string[][]};
 export type ManualSection={id:string;title:string;summary:string;blocks:ManualBlock[]};
-export const manualUpdated="06/10/2026";
+export const manualUpdated="07/10/2026";
 export const manualSections:ManualSection[]=[
  {id:"senhas",title:"Senhas e recuperação de acesso",summary:"Alterar senha ou solicitar um reset autorizado.",blocks:[
  {kind:"steps",items:["Esqueceu a senha? No login, clique em Esqueci minha senha e informe seu e-mail. A solicitação entrará em Autorizações; nenhum reset automático por e-mail será liberado.","Supervisor ou Administrador confere sua identidade, decide a solicitação e entrega pessoalmente o código de uso único. O Supervisor respeita a hierarquia de usuários; ninguém aprova o próprio reset.","No login, use Já tenho um código autorizado. Informe e-mail, código, Nova senha e Confirmar nova senha. Se entrar com a senha antiga após a aprovação, a definição da nova senha será obrigatória.","O código vale por 24 horas, é bloqueado após 5 tentativas incorretas e não pode ser reutilizado após a conclusão. Para renovar código perdido, expirado ou bloqueado, procure o responsável. O código anterior será invalidado.","Conhece a senha atual? Use Alterar senha, junto à sua conta no menu. Informe Senha atual, Nova senha e Confirmar nova senha. Não exige autorização.","Após qualquer troca de senha, as sessões são encerradas. Entre novamente com a nova senha."]},
@@ -287,7 +287,7 @@ export const manualSections:ManualSection[]=[
           "Clique em Emitir laudo. A emissão ocorre dentro do carregamento.",
           "Abra Laudos e busque pelo número do documento, placa ou destino. Clique no registro ou em Abrir.",
           "Confira resultados, especificações e situação de cada variável, responsável pelas análises e, quando aplicável, responsável e justificativa da autorização.",
-          "Use Imprimir laudo. No diálogo do navegador, selecione a impressora ou Salvar como PDF, conforme disponível."
+          "Use Baixar PDF para obter um A4 de uma página, gerado pelo aplicativo apenas com o certificado. Imprima esse arquivo para ter um documento sem cabeçalhos/rodapés automáticos. Imprimir laudo mantém a caixa nativa; se seu navegador ainda adicionar título, URL ou numeração, desative Cabeçalhos e rodapés no diálogo. Essas opções são controladas pelo navegador."
         ]
       },
       {

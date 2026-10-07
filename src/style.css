@@ -1373,7 +1373,8 @@ dialog.help-dialog .manual-index button.manual-topic:hover { background: #e3efe7
  .cert-footer { flex-direction:column;gap:12px; }
 }
 @media print {
- @page { size:A4; margin:10mm; }
+ @page { size:A4; margin:0; }
+ .main { width:210mm; max-width:210mm; box-sizing:border-box; padding:10mm; }
  :root { background:#fff; }
  html, body { margin:0;padding:0;background:#fff; }
  .certificate { width:var(--certificate-print-width,190mm); max-width:none; box-sizing:border-box; font-size:10px; line-height:1.35; break-inside:avoid; }
@@ -1398,3 +1399,13 @@ dialog.help-dialog .manual-index button.manual-topic:hover { background: #e3efe7
 }
 
 .reset-delivery-code { font-family:monospace; font-size:18px; font-weight:700; overflow-wrap:anywhere; user-select:all; }
+
+/* Explicit block flow at every breakpoint: recovery and account guidance never share a line. */
+.login-recovery { display:block; clear:both; }
+.login-card .login-recovery .text-button { margin:0 0 12px; }
+.login-permissions { display:block; line-height:1.55; margin-top:0; }
+.certificate-output-actions { display:contents; }
+@media screen and (max-width:900px) {
+ .mobile-certificate-actions { display:grid; gap:8px; }
+ .main:has(> .certificate) .action-column .certificate-pdf-action { display:none !important; }
+}
