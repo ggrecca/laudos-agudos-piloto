@@ -24,7 +24,7 @@ module.exports=async ({browser,users,password,sql,record,consoleErrors})=>{
  const nav=async name=>{await page.locator(".sidebar nav").getByRole("button",{name,exact:true}).click();};
  await page.evaluate(id=>localStorage.setItem("laudos-agudos:onboarding:v1:"+id,"1"),users.admin.id);
  for(const name of ["Carregamentos","Autorizações","Cadastros"]){
-  await nav(name);await page.locator(".heading h1").filter({hasText:name}).waitFor();
+  await nav(name);assert.match(await page.locator(".sidebar nav").getByRole("button",{name,exact:true}).getAttribute("class"),/active/);
   await page.reload();await page.locator(".sidebar").waitFor();await page.locator(".flow-card").first().waitFor();
  }
  await nav("Carregamentos");
@@ -56,7 +56,11 @@ module.exports=async ({browser,users,password,sql,record,consoleErrors})=>{
  assert.ok(official.includes("Data de emissão")&&official.includes("Origem dos resultados"));
  // Native Chromium default headers enabled, not pre-disabled by the test.
  await page.pdf({path:"test-results/native-header-enabled.pdf",preferCSSPageSize:true,printBackground:true,displayHeaderFooter:true});
+ await page.pdf({path:"test-results/native-header-disabled.pdf",preferCSSPageSize:true,printBackground:true,displayHeaderFooter:false});
+ const plain=execFileSync("pdftotext",["-layout","test-results/native-header-disabled.pdf","-"],{encoding:"utf8"});
  const native=execFileSync("pdftotext",["-layout","test-results/native-header-enabled.pdf","-"],{encoding:"utf8"});
+ assert.equal(native.replace(/\s+/g,""),plain.replace(/\s+/g,""),"Enabling native headers must not add date, number, title or URL");
+ assert.match(execFileSync("pdfinfo",["test-results/native-header-enabled.pdf"],{encoding:"utf8"}),/Pages:\s+1\b/);
  assert.ok(!native.includes("127.0.0.1")&&!native.includes("http:")&&!native.includes("Laudos Agudos"),"Browser title/URL must not be printed");
  assert.ok(native.includes("Data de emissão")&&native.includes("Origem dos resultados"));
  for(const count of [9,30,60]){

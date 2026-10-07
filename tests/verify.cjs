@@ -308,7 +308,7 @@ let browser,lastPage;
  record("Navegador: duplicidade direciona ao produto, autocomplete, edição gera versão, usuários e histórico");
  await page.getByRole("button",{name:"Sair",exact:true}).click();await page.getByLabel("E-mail",{exact:true}).waitFor();await login("consulta");
  await page.locator(".sidebar nav").getByRole("button",{name:"Ajuda",exact:true}).click();await manual.waitFor();
- await manual.getByText("Atualizado em 06/10/2026 · Seu perfil: Consulta",{exact:true}).waitFor();
+ await manual.getByText("Atualizado em 07/10/2026 · Seu perfil: Consulta",{exact:true}).waitFor();
  await page.keyboard.press("Escape");await manual.waitFor({state:"hidden"});await nav("Laudos");
  const cancelledRow=page.locator("tbody tr").filter({hasText:number});
  await cancelledRow.click();await page.locator(".cancelled-banner").waitFor();await page.screenshot({path:"test-results/cancelled-certificate-1440.png",fullPage:true});
