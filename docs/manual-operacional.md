@@ -1,7 +1,7 @@
 # Laudos Agudos — Manual operacional
 
 Fábricas Químicas - Agudos
-Atualizado em 06/10/2026
+Atualizado em 07/10/2026
 
 ## Senhas e recuperação de acesso
 
@@ -147,7 +147,7 @@ Conferência final e acesso ao certificado.
 3. Clique em Emitir laudo. A emissão ocorre dentro do carregamento.
 4. Abra Laudos e busque pelo número do documento, placa ou destino. Clique no registro ou em Abrir.
 5. Confira resultados, especificações e situação de cada variável, responsável pelas análises e, quando aplicável, responsável e justificativa da autorização.
-6. Use Imprimir laudo. No diálogo do navegador, selecione a impressora ou Salvar como PDF, conforme disponível.
+6. Use Baixar PDF para obter um A4 de uma página, gerado pelo aplicativo apenas com o certificado. Imprima esse arquivo para ter um documento sem cabeçalhos/rodapés automáticos. Imprimir laudo mantém a caixa nativa; se seu navegador ainda adicionar título, URL ou numeração, desative Cabeçalhos e rodapés no diálogo. Essas opções são controladas pelo navegador.
 
 O documento emitido é preservado. A edição futura de um produto não deve alterar o nome, a versão ou as especificações associados ao registro. Para dados antigos, informações não registradas podem permanecer indicadas como desconhecidas.
 
